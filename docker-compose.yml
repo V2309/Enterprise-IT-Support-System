@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  deskpilot-server:
+    build:
+      context: .
+      dockerfile: DeskPilot.Server/Dockerfile
+    container_name: deskpilot-server
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # Dán chuỗi kết nối Neon Postgres của bạn vào đây (nhớ giữ nguyên SSL Mode=Require)
+      - ConnectionStrings__DefaultConnection=Host=ep-noisy-unit-b8vdhozk-pooler.c-14.us-east-1.aws.neon.tech;Port=5432;Database=neondb;Username=neondb_owner;Password=npg_UgCV5Aa6TWnm;SSL Mode=Require;Channel Binding=Require;Trust Server Certificate=true

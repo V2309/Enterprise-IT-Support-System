@@ -1,0 +1,6 @@
+@DeskPilot.Server_HostAddress = http://localhost:5009
+
+GET {{DeskPilot.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../DeskPilot.Client/DeskPilot.Client.csproj" />
+  <Project Path="../DeskPilot.Server/DeskPilot.Server.csproj" Id="d0fc797a-8940-498c-b5ab-f27333b2dbf1" />
+  <Project Path="../DeskPilot.Shared/DeskPilot.Shared.csproj" />
+  <Project Path="DeskPilot.Admin.csproj" />
+</Solution>

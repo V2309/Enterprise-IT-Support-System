@@ -1,0 +1,72 @@
+<UserControl x:Class="DeskPilot.Admin.Views.ActionLogsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             Background="Transparent">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,16">
+            <StackPanel DockPanel.Dock="Left">
+                <TextBlock Text="Quản Lý Runbook &amp; Nhật Ký Thao Tác" FontSize="18" FontWeight="Bold" Foreground="#0f172a"/>
+                <TextBlock Text="Lịch sử can thiệp kỹ thuật tự động và các lệnh thực thi từ xa trên máy trạm" FontSize="12" Foreground="#64748b" Margin="0,2,0,0"/>
+            </StackPanel>
+
+            <Button Content="Làm mới lịch sử" Padding="14,6" Background="#eff6ff" Foreground="#2563eb" 
+                    BorderBrush="#bfdbfe" BorderThickness="1" FontWeight="SemiBold" FontSize="12"
+                    Cursor="Hand" DockPanel.Dock="Right" Click="BtnRefresh_Click">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="7"/>
+                    </Style>
+                </Button.Resources>
+            </Button>
+        </DockPanel>
+
+        <!-- Bảng danh sách log -->
+        <Border Grid.Row="1" Background="#ffffff" CornerRadius="14" BorderBrush="#e2e8f0" BorderThickness="1" Padding="16">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.04" Color="#0f172a" Direction="270"/>
+            </Border.Effect>
+
+            <DataGrid ItemsSource="{Binding ActionLogs}" AutoGenerateColumns="False" 
+                      CanUserAddRows="False" IsReadOnly="True" Background="Transparent" 
+                      BorderThickness="0" GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                      HorizontalGridLinesBrush="#f1f5f9" RowBackground="#ffffff"
+                      AlternatingRowBackground="#fafafa" RowHeight="38">
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#f8fafc"/>
+                        <Setter Property="Foreground" Value="#475569"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        <Setter Property="BorderBrush" Value="#e2e8f0"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#eff6ff"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Thời Gian Thực Thi" Binding="{Binding ExecutedAt, StringFormat='{}{0:HH:mm:ss dd/MM/yyyy}'}" Width="160"/>
+                    <DataGridTextColumn Header="Máy Nhận Lệnh" Binding="{Binding TargetMachine}" Width="150"/>
+                    <DataGridTextColumn Header="Tên Lệnh / Runbook" Binding="{Binding CommandName}" Width="160"/>
+                    <DataGridTextColumn Header="Người Thực Hiện" Binding="{Binding ExecutedBy}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+    </Grid>
+</UserControl>
