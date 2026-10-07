@@ -1,6 +1,7 @@
 using DeskPilot.Shared;
 using DeskPilot.Shared.DTO;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Toolkit.Uwp.Notifications;
 using System;
 using System.Collections.Concurrent;
@@ -8,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -26,11 +28,73 @@ namespace DeskPilot.Admin.ViewModels
         public string IconSymbol { get; set; } = "Info20";
     }
 
+    public class MetricPoint
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string TimeLabel => Timestamp.ToString("HH:mm:ss");
+        public double RamUsagePercent { get; set; }
+        public double DiskUsagePercent { get; set; }
+        public double CpuUsagePercent { get; set; }
+        public double FreeDiskSpaceGB { get; set; }
+    }
+
     public class DashboardViewModel : INotifyPropertyChanged
     {
         private HubConnection? _hubConnection;
-        private const string ServerUrl = "http://localhost:5000/supportHub";
+        private readonly string _serverUrl;
+        private readonly string _apiKey;
+        private readonly SemaphoreSlim _connectLock = new(1, 1);
+        private int _retryLoopRunning;
         private readonly ConcurrentDictionary<string, DateTime> _lastAlertTimes = new();
+        private readonly ConcurrentDictionary<string, List<MetricPoint>> _machineHistories = new();
+
+        public event Action<string>? OnMetricsHistoryUpdated;
+
+        public List<MetricPoint> GetMetricsHistory(string machineName, double fallbackRam = 0.0, double fallbackDisk = 0.0)
+        {
+            var history = _machineHistories.GetOrAdd(machineName, _ => new List<MetricPoint>());
+            lock (history)
+            {
+                if (history.Count == 0 && (fallbackRam > 0 || fallbackDisk > 0))
+                {
+                    var machine = Machines.FirstOrDefault(m => m.MachineName.Equals(machineName, StringComparison.OrdinalIgnoreCase));
+                    history.Add(new MetricPoint
+                    {
+                        Timestamp = DateTime.Now,
+                        RamUsagePercent = fallbackRam,
+                        DiskUsagePercent = fallbackDisk,
+                        CpuUsagePercent = machine?.CpuUsagePercent ?? 0.0,
+                        FreeDiskSpaceGB = machine?.FreeDiskSpaceGB ?? 0.0
+                    });
+                }
+                return new List<MetricPoint>(history);
+            }
+        }
+
+        public void AppendMetricPoint(MachineStatusDto status)
+        {
+            var history = _machineHistories.GetOrAdd(status.MachineName, _ => new List<MetricPoint>());
+            lock (history)
+            {
+                double diskPercent = status.DiskUsagePercent > 0 ? status.DiskUsagePercent :
+                    (status.TotalDiskSpaceGB > 0 ? Math.Round((status.TotalDiskSpaceGB - status.FreeDiskSpaceGB) / status.TotalDiskSpaceGB * 100, 1) : 0.0);
+
+                history.Add(new MetricPoint
+                {
+                    Timestamp = DateTime.Now,
+                    RamUsagePercent = status.RamUsagePercent,
+                    DiskUsagePercent = diskPercent,
+                    CpuUsagePercent = status.CpuUsagePercent,
+                    FreeDiskSpaceGB = status.FreeDiskSpaceGB
+                });
+
+                if (history.Count > 30)
+                {
+                    history.RemoveAt(0);
+                }
+            }
+            OnMetricsHistoryUpdated?.Invoke(status.MachineName);
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? name = null)
@@ -66,6 +130,7 @@ namespace DeskPilot.Admin.ViewModels
                     OnPropertyChanged(nameof(IsDashboardActive));
                     OnPropertyChanged(nameof(IsTicketsActive));
                     OnPropertyChanged(nameof(IsLogsActive));
+                    OnPropertyChanged(nameof(IsChatActive));
                 }
             }
         }
@@ -73,6 +138,7 @@ namespace DeskPilot.Admin.ViewModels
         public bool IsDashboardActive => CurrentTab == "Dashboard";
         public bool IsTicketsActive => CurrentTab == "Tickets";
         public bool IsLogsActive => CurrentTab == "Logs";
+        public bool IsChatActive => CurrentTab == "Chat";
 
         // Tìm kiếm toàn cục từ Header
         private string _searchText = "";
@@ -91,7 +157,7 @@ namespace DeskPilot.Admin.ViewModels
         }
 
         // Lọc theo phòng ban từ Sidebar
-        private string _selectedDepartment = "Kế toán (12)";
+        private string _selectedDepartment = "Tất cả phòng ban";
         public string SelectedDepartment
         {
             get => _selectedDepartment;
@@ -117,15 +183,42 @@ namespace DeskPilot.Admin.ViewModels
 
         public DashboardViewModel()
         {
+            var config = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+                .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: false)
+                .AddEnvironmentVariables("DESKPILOT_")
+                .Build();
+
+            _serverUrl = config["ServerSettings:HubUrl"] ?? "http://localhost:5000/supportHub";
+            _apiKey = config["ServerSettings:ApiKey"] ?? string.Empty;
+
             Machines.CollectionChanged += (s, e) =>
             {
                 FilterMachines();
                 UpdateCounts();
             };
-
-            // Dữ liệu mẫu ban đầu cho Live Incident Feed (giống screenshot của bạn)
-            SeedInitialIncidents();
         }
+
+        // Đồng bộ toàn bộ thông số từ DTO Server gửi về vào đối tượng đang hiển thị trên UI
+        private static void ApplyStatus(MachineStatusDto target, MachineStatusDto source)
+        {
+            target.UserName = source.UserName;
+            target.RamUsagePercent = source.RamUsagePercent;
+            target.CpuUsagePercent = source.CpuUsagePercent;
+            target.TotalRamGB = source.TotalRamGB;
+            target.UsedRamGB = source.UsedRamGB;
+            target.TotalDiskSpaceGB = source.TotalDiskSpaceGB;
+            target.FreeDiskSpaceGB = source.FreeDiskSpaceGB;
+            target.DiskUsagePercent = source.DiskUsagePercent;
+            target.SpoolerStatus = source.SpoolerStatus;
+            target.StatusMessage = source.StatusMessage;
+            target.IsOnline = source.IsOnline;
+            target.LastSeen = source.LastSeen;
+        }
+
+        private MachineStatusDto? FindMachine(string machineName) =>
+            Machines.FirstOrDefault(m => m.MachineName.Equals(machineName, StringComparison.OrdinalIgnoreCase));
 
         private void UpdateCounts()
         {
@@ -148,70 +241,6 @@ namespace DeskPilot.Admin.ViewModels
                     FilteredMachines.Add(m);
                 }
             }
-        }
-
-        private void SeedInitialIncidents()
-        {
-            LiveIncidents.Add(new IncidentFeedItem
-            {
-                TimeStr = DateTime.Now.AddMinutes(-5).ToString("HH:mm"),
-                MachineName = "PC-KETOAN-05",
-                UserName = "Lý Thị K",
-                Title = "Máy in bị kẹt (Printer Spooler Error)",
-                Tag = "Máy in",
-                TagBackground = "#fdf2f8",
-                TagForeground = "#db2777",
-                DotColor = "#ef4444",
-                IconSymbol = "Warning20"
-            });
-            LiveIncidents.Add(new IncidentFeedItem
-            {
-                TimeStr = DateTime.Now.AddMinutes(-12).ToString("HH:mm"),
-                MachineName = "PC-KETOAN-08",
-                UserName = "Nguyễn Thị H",
-                Title = "Máy chậm, CPU cao (92%)",
-                Tag = "Hiệu suất",
-                TagBackground = "#fffbeb",
-                TagForeground = "#d97706",
-                DotColor = "#f59e0b",
-                IconSymbol = "Warning20"
-            });
-            LiveIncidents.Add(new IncidentFeedItem
-            {
-                TimeStr = DateTime.Now.AddMinutes(-25).ToString("HH:mm"),
-                MachineName = "PC-KETOAN-03",
-                UserName = "Lê Văn C",
-                Title = "Đã khởi chạy Runbook: Flush DNS",
-                Tag = "Tự động",
-                TagBackground = "#eff6ff",
-                TagForeground = "#2563eb",
-                DotColor = "#3b82f6",
-                IconSymbol = "Info20"
-            });
-            LiveIncidents.Add(new IncidentFeedItem
-            {
-                TimeStr = DateTime.Now.AddMinutes(-40).ToString("HH:mm"),
-                MachineName = "PC-KETOAN-05",
-                UserName = "Hoàng Văn E",
-                Title = "Mất mạng",
-                Tag = "Kết nối",
-                TagBackground = "#fee2e2",
-                TagForeground = "#dc2626",
-                DotColor = "#ef4444",
-                IconSymbol = "Dismiss20"
-            });
-            LiveIncidents.Add(new IncidentFeedItem
-            {
-                TimeStr = DateTime.Now.AddMinutes(-55).ToString("HH:mm"),
-                MachineName = "PC-KETOAN-02",
-                UserName = "Trần Thị B",
-                Title = "Đã sửa lỗi kẹt máy in thành công",
-                Tag = "Hoàn tất",
-                TagBackground = "#dcfce7",
-                TagForeground = "#16a34a",
-                DotColor = "#10b981",
-                IconSymbol = "Checkmark20"
-            });
         }
 
         public void AddIncident(string machine, string user, string title, string tag, string dotColor, string tagBg, string tagFg)
@@ -240,7 +269,11 @@ namespace DeskPilot.Admin.ViewModels
         public async Task StartListeningAsync()
         {
             _hubConnection = new HubConnectionBuilder()
-                .WithUrl(ServerUrl)
+                .WithUrl(_serverUrl, options =>
+                {
+                    options.Headers[HubHeaders.ApiKey] = _apiKey;
+                    options.Headers[HubHeaders.OperatorName] = Environment.UserName;
+                })
                 .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
                 .Build();
 
@@ -249,26 +282,18 @@ namespace DeskPilot.Admin.ViewModels
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    var existingMachine = Machines.FirstOrDefault(m =>
-                        m.MachineName.Equals(status.MachineName, StringComparison.OrdinalIgnoreCase));
+                    var existingMachine = FindMachine(status.MachineName);
 
                     if (existingMachine != null)
                     {
-                        existingMachine.RamUsagePercent = status.RamUsagePercent;
-                        existingMachine.CpuUsagePercent = status.CpuUsagePercent;
-                        existingMachine.FreeDiskSpaceGB = status.FreeDiskSpaceGB;
-                        existingMachine.TotalDiskSpaceGB = status.TotalDiskSpaceGB;
-                        existingMachine.TotalRamGB = status.TotalRamGB;
-                        existingMachine.UsedRamGB = status.UsedRamGB;
-                        existingMachine.IsOnline = true;
-                        existingMachine.LastSeen = status.LastSeen;
-                        existingMachine.SpoolerStatus = status.SpoolerStatus;
+                        ApplyStatus(existingMachine, status);
                     }
                     else
                     {
                         Machines.Add(status);
                     }
 
+                    AppendMetricPoint(status);
                     UpdateCounts();
                     CheckAndAlertResourceThreshold(status);
                 });
@@ -377,31 +402,63 @@ namespace DeskPilot.Admin.ViewModels
                 await FetchInitialDataAsync();
             };
 
-            _hubConnection.Closed += async error =>
+            _hubConnection.Closed += error =>
             {
+                // Chỉ xảy ra khi auto-reconnect đã bỏ cuộc => chuyển sang vòng lặp thử lại vô hạn
                 System.Diagnostics.Debug.WriteLine("[Admin SignalR] Kết nối đóng, đang chờ thử lại...");
-                await Task.Delay(2000);
                 _ = ConnectWithRetryAsync();
+                return Task.CompletedTask;
             };
 
             // Bắt đầu vòng lặp thử kết nối chạy ngầm cho đến khi Server sẵn sàng
             _ = ConnectWithRetryAsync();
+            await Task.CompletedTask;
         }
 
+        // Chỉ cho phép 1 vòng lặp kết nối chạy tại một thời điểm (tránh gọi StartAsync chồng nhau)
         private async Task ConnectWithRetryAsync()
         {
-            while (_hubConnection != null && _hubConnection.State != HubConnectionState.Connected)
+            if (Interlocked.Exchange(ref _retryLoopRunning, 1) == 1) return;
+
+            try
             {
-                try
+                while (_hubConnection != null && _hubConnection.State != HubConnectionState.Connected)
                 {
-                    await _hubConnection.StartAsync();
-                    await FetchInitialDataAsync();
-                    break;
-                }
-                catch
-                {
+                    if (await TryStartAsync())
+                    {
+                        await FetchInitialDataAsync();
+                        break;
+                    }
                     await Task.Delay(2000);
                 }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _retryLoopRunning, 0);
+            }
+        }
+
+        private async Task<bool> TryStartAsync()
+        {
+            if (_hubConnection == null) return false;
+
+            await _connectLock.WaitAsync();
+            try
+            {
+                if (_hubConnection.State == HubConnectionState.Connected) return true;
+                if (_hubConnection.State != HubConnectionState.Disconnected) return false;
+
+                await _hubConnection.StartAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Admin SignalR] Kết nối thất bại: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _connectLock.Release();
             }
         }
 
@@ -411,10 +468,20 @@ namespace DeskPilot.Admin.ViewModels
             {
                 if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
                 {
+                    // Danh sách máy (kể cả máy đang offline) để Dashboard không trống khi vừa mở
+                    var machines = await _hubConnection.InvokeAsync<List<MachineStatusDto>>("GetMachines");
                     var oldTickets = await _hubConnection.InvokeAsync<List<TicketDto>>("GetActiveTickets");
 
                     Application.Current.Dispatcher.Invoke(() =>
                     {
+                        foreach (var m in machines)
+                        {
+                            var existing = FindMachine(m.MachineName);
+                            if (existing != null) ApplyStatus(existing, m);
+                            else Machines.Add(m);
+                        }
+                        UpdateCounts();
+
                         Tickets.Clear();
                         foreach (var ticket in oldTickets)
                         {
@@ -436,11 +503,18 @@ namespace DeskPilot.Admin.ViewModels
         {
             if (_hubConnection is not null && _hubConnection.State == HubConnectionState.Connected)
             {
-                await _hubConnection.InvokeAsync("SendCommandToClient", targetMachine, commandName);
-                AddIncident(targetMachine, "", $"Đã gửi lệnh: {commandName}", "Đang chạy", "#3b82f6", "#eff6ff", "#2563eb");
-
-                await Task.Delay(500);
-                await LoadActionLogsAsync();
+                try
+                {
+                    // ActionLog mới sẽ được Server đẩy về qua sự kiện "ReceiveNewActionLog"
+                    await _hubConnection.InvokeAsync("SendCommandToClient", targetMachine, commandName);
+                    AddIncident(targetMachine, "", $"Đã gửi lệnh: {commandName}", "Đang chạy", "#3b82f6", "#eff6ff", "#2563eb");
+                }
+                catch (Exception ex)
+                {
+                    _ = DeskPilot.Admin.Services.ModalDialogService.ShowWarningAsync(
+                        "Không Thể Gửi Lệnh",
+                        CleanHubError(ex));
+                }
             }
             else
             {
@@ -449,6 +523,14 @@ namespace DeskPilot.Admin.ViewModels
                     "Chưa kết nối được với Server! Đang tự động kết nối lại...");
                 _ = ConnectWithRetryAsync();
             }
+        }
+
+        // HubException từ Server có dạng "An unexpected error occurred invoking '...' on the server. HubException: <message>"
+        private static string CleanHubError(Exception ex)
+        {
+            const string marker = "HubException: ";
+            var idx = ex.Message.IndexOf(marker, StringComparison.Ordinal);
+            return idx >= 0 ? ex.Message[(idx + marker.Length)..] : ex.Message;
         }
 
         // IT bấm hoàn tất Ticket
@@ -464,7 +546,7 @@ namespace DeskPilot.Admin.ViewModels
                 {
                     _ = DeskPilot.Admin.Services.ModalDialogService.ShowErrorAsync(
                         "Lỗi Đóng Phiếu",
-                        $"Không thể cập nhật trạng thái phiếu: {ex.Message}");
+                        $"Không thể cập nhật trạng thái phiếu: {CleanHubError(ex)}");
                 }
             }
         }
@@ -528,9 +610,6 @@ namespace DeskPilot.Admin.ViewModels
             new ToastContentBuilder()
                 .AddText(alertTitle)
                 .AddText(alertContent)
-                .AddAppLogoOverride(
-                    new Uri("https://cdn-icons-png.flaticon.com/512/564/564619.png"),
-                    ToastGenericAppLogoCrop.Circle)
                 .Show();
         }
     }

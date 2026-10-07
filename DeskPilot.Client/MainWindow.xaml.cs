@@ -7,14 +7,15 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using DeskPilot.Client.Services;
 using DeskPilot.Shared.DTO;
+using Hardcodet.Wpf.TaskbarNotification;
 
 namespace DeskPilot.Client
 {
     public partial class MainWindow : Window
     {
         private readonly HardwareMonitorService _monitorService = new();
-        private readonly SignalRClientService _signalRService = new();
         private readonly RunbookExecutor _runbookExecutor = new();
+        private readonly SignalRClientService _signalRService;
         private readonly DispatcherTimer _timer = new();
         private bool _isExplicitExit = false;
 
@@ -23,8 +24,10 @@ namespace DeskPilot.Client
             InitializeComponent();
             PositionCenterScreen();
 
-            // Đăng ký nhận lệnh từ Admin
-            _signalRService.OnCommandReceived += HandleRemoteCommandAsync;
+            _signalRService = new SignalRClientService(_runbookExecutor);
+
+            // Hiển thị thông báo (không chặn UI) khi IT gửi lệnh khắc phục từ xa
+            _signalRService.OnRemoteCommandExecuted += OnRemoteCommandExecuted;
 
             Loaded += async (s, e) =>
             {
@@ -54,24 +57,15 @@ namespace DeskPilot.Client
                             "Cài đặt & Giới thiệu", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        // Xử lý các lệnh sửa lỗi được IT gửi xuống từ xa qua SignalR
-        private async Task HandleRemoteCommandAsync(string commandName)
+        // Thông báo kết quả lệnh sửa lỗi được IT gửi xuống từ xa qua SignalR
+        private void OnRemoteCommandExecuted(string commandName, CommandResult result)
         {
-            string messageResult = string.Empty;
-
-            if (commandName == "FixPrint")
+            Dispatcher.BeginInvoke(() =>
             {
-                messageResult = await _runbookExecutor.RestartPrintSpoolerAsync();
-            }
-            else if (commandName == "FlushDns")
-            {
-                messageResult = await _runbookExecutor.FlushDnsAsync();
-            }
-
-            Dispatcher.Invoke(() =>
-            {
-                MessageBox.Show($"IT Support vừa gửi lệnh khắc phục:\n{messageResult}",
-                                "DeskPilot Thông Báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                MyNotifyIcon.ShowBalloonTip(
+                    "IT Support vừa chạy lệnh khắc phục",
+                    result.Message,
+                    result.IsSuccess ? BalloonIcon.Info : BalloonIcon.Warning);
             });
         }
 
@@ -152,20 +146,31 @@ namespace DeskPilot.Client
         // Nút: Tự chẩn đoán & Sửa nhanh
         private async void BtnAutoFix_Click(object sender, RoutedEventArgs e)
         {
+            var button = sender as Button;
+            if (button != null) button.IsEnabled = false;
+
             try
             {
                 var printTask = _runbookExecutor.RestartPrintSpoolerAsync();
                 var dnsTask = _runbookExecutor.FlushDnsAsync();
-                await Task.WhenAll(printTask, dnsTask);
+                var results = await Task.WhenAll(printTask, dnsTask);
 
-                MessageBox.Show("Đã hoàn tất tự động kiểm tra và chạy Runbook sửa lỗi:\n" +
-                                "✓ Khởi động lại dịch vụ máy in (Print Spooler)\n" +
-                                "✓ Xóa sạch bộ đệm phân giải tên miền (Flush DNS)",
-                                "Tự Chẩn Đoán & Sửa Nhanh", MessageBoxButton.OK, MessageBoxImage.Information);
+                static string Line(CommandResult r) => $"{(r.IsSuccess ? "✓" : "✗")} {r.Message}";
+                bool allOk = Array.TrueForAll(results, r => r.IsSuccess);
+
+                MessageBox.Show("Kết quả tự động kiểm tra và chạy Runbook sửa lỗi:\n" +
+                                Line(results[0]) + "\n" +
+                                Line(results[1]),
+                                "Tự Chẩn Đoán & Sửa Nhanh", MessageBoxButton.OK,
+                                allOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Có lỗi trong quá trình tự sửa: {ex.Message}", "Thông Báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                if (button != null) button.IsEnabled = true;
             }
         }
 

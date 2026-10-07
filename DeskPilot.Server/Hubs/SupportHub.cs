@@ -1,153 +1,197 @@
-using DeskPilot.Server.Data;
+using DeskPilot.Server.Security;
+using DeskPilot.Server.Services;
 using DeskPilot.Shared;
 using DeskPilot.Shared.DTO;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DeskPilot.Server.Hubs
 {
     public class SupportHub : Hub
     {
-        private readonly AppDbContext _db;
+        // Nhóm chứa toàn bộ kết nối của ứng dụng IT Admin
+        public const string AdminsGroup = "admins";
 
-        public SupportHub(AppDbContext db)
+        // Mỗi máy trạm có 1 nhóm riêng => lệnh chỉ gửi đúng tới máy đích
+        public static string MachineGroup(string machineName) => $"machine:{machineName.ToUpperInvariant()}";
+
+        private const string RoleKey = "role";
+        private const string MachineKey = "machine";
+        private const string OperatorKey = "operator";
+        private const int MaxDescriptionLength = 2000;
+
+        private readonly ITicketService _ticketService;
+        private readonly IActionLogService _actionLogService;
+        private readonly MachineStateCache _machineCache;
+        private readonly ApiKeyValidator _apiKeyValidator;
+        private readonly ILogger<SupportHub> _logger;
+
+        public SupportHub(
+            ITicketService ticketService,
+            IActionLogService actionLogService,
+            MachineStateCache machineCache,
+            ApiKeyValidator apiKeyValidator,
+            ILogger<SupportHub> logger)
         {
-            _db = db;
+            _ticketService = ticketService;
+            _actionLogService = actionLogService;
+            _machineCache = machineCache;
+            _apiKeyValidator = apiKeyValidator;
+            _logger = logger;
         }
 
-        // 1. Nhận nhịp tim từ Client và lưu/cập nhật thông số phần cứng
-        public async Task SendHeartbeat(MachineStatusDto status)
+        // Xác định vai trò kết nối và đưa vào nhóm tương ứng
+        public override async Task OnConnectedAsync()
         {
-            status.IsOnline = true;
-            // Dùng UtcNow thay vì DateTime.Now
-            status.LastSeen = DateTime.UtcNow;
+            var http = Context.GetHttpContext();
+            var role = http is null ? ClientRole.None : _apiKeyValidator.Resolve(http);
 
-            var existing = await _db.Machines.FirstOrDefaultAsync(m => m.MachineName == status.MachineName);
-            if (existing != null)
+            if (role == ClientRole.Admin)
             {
-                existing.UserName = status.UserName;
-                existing.RamUsagePercent = status.RamUsagePercent;
-                existing.FreeDiskSpaceGB = status.FreeDiskSpaceGB;
-                existing.IsOnline = true;
-                existing.SpoolerStatus = status.SpoolerStatus;
-                existing.LastSeen = status.LastSeen;
+                var operatorName = http!.Request.Headers[HubHeaders.OperatorName].ToString();
+                Context.Items[RoleKey] = ClientRole.Admin;
+                Context.Items[OperatorKey] = string.IsNullOrWhiteSpace(operatorName) ? "IT Admin" : operatorName.Trim();
+                await Groups.AddToGroupAsync(Context.ConnectionId, AdminsGroup);
+            }
+            else if (role == ClientRole.Agent)
+            {
+                var machineName = http!.Request.Headers[HubHeaders.MachineName].ToString().Trim();
+                if (string.IsNullOrEmpty(machineName) || machineName.Length > 100)
+                {
+                    Context.Abort();
+                    return;
+                }
+
+                Context.Items[RoleKey] = ClientRole.Agent;
+                Context.Items[MachineKey] = machineName;
+                await Groups.AddToGroupAsync(Context.ConnectionId, MachineGroup(machineName));
             }
             else
             {
-                _db.Machines.Add(new MachineStatusEntity
-                {
-                    MachineName = status.MachineName,
-                    UserName = status.UserName,
-                    RamUsagePercent = status.RamUsagePercent,
-                    FreeDiskSpaceGB = status.FreeDiskSpaceGB,
-                    IsOnline = true,
-                    SpoolerStatus = status.SpoolerStatus,
-                    LastSeen = status.LastSeen
-                });
+                Context.Abort();
+                return;
             }
 
-            await _db.SaveChangesAsync();
-            await Clients.Others.SendAsync("ReceiveMachineStatus", status);
+            await base.OnConnectedAsync();
+        }
+
+        // ===================== AGENT (máy trạm) =====================
+
+        // 1. Nhận nhịp tim từ Client -> cập nhật cache RAM -> báo cho Admin
+        public async Task SendHeartbeat(MachineStatusDto status)
+        {
+            var machineName = RequireAgent();
+
+            // Không tin tên máy client tự khai trong payload, dùng tên đã xác thực lúc kết nối
+            status.MachineName = machineName;
+
+            var snapshot = _machineCache.Upsert(status);
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveMachineStatus", snapshot);
         }
 
         // 2. Client gửi ticket báo sự cố -> Lưu PostgreSQL -> Báo sang Admin
-        // Nhận ticket từ Client, lưu vào PostgreSQL và phát sang Admin
         public async Task CreateTicket(string machineName, string userName, string description)
         {
-            Console.WriteLine($"[TICKET NHẬN ĐƯỢC] Từ máy: {machineName} - User: {userName} - Nội dung: {description}");
+            var authenticatedMachine = RequireAgent();
 
-            var ticket = new TicketDto
-            {
-                MachineName = string.IsNullOrWhiteSpace(machineName) ? "Unknown" : machineName,
-                UserName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName,
-                Description = description,
-                Status = "Open",
-                CreatedAt = DateTime.UtcNow // Chuẩn UTC cho PostgreSQL
-            };
+            description = (description ?? string.Empty).Trim();
+            if (description.Length == 0) throw new HubException("Nội dung sự cố không được để trống.");
+            if (description.Length > MaxDescriptionLength) description = description[..MaxDescriptionLength];
 
-            // 1. Thêm vào DbContext
-            await _db.Tickets.AddAsync(ticket);
+            _logger.LogInformation("[TICKET NHẬN ĐƯỢC] Từ máy: {MachineName} - User: {UserName}", authenticatedMachine, userName);
 
-            // 2. Lưu xuống PostgreSQL
-            var rowsAffected = await _db.SaveChangesAsync();
-            Console.WriteLine($"[TICKET DB] Đã lưu thành công {rowsAffected} dòng vào bảng Tickets.");
-
-            // 3. Báo sang các máy khác (Admin)
-            await Clients.Others.SendAsync("ReceiveNewTicket", ticket);
+            var ticket = await _ticketService.CreateAsync(authenticatedMachine, userName, description);
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveNewTicket", ticket);
         }
 
-        // 3. Admin phát lệnh xuống máy Client và ghi nhật ký lệnh
-        public async Task SendCommandToClient(string targetMachineName, string commandName)
-        {
-            var log = new ActionLogDto
-            {
-                TargetMachine = targetMachineName,
-                CommandName = commandName,
-                ExecutedBy = "IT Admin",
-                ExecutedAt = DateTime.UtcNow
-            };
-            _db.ActionLogs.Add(log);
-            await _db.SaveChangesAsync();
-
-            await Clients.Others.SendAsync("ExecuteCommand", targetMachineName, commandName);
-            await Clients.All.SendAsync("ReceiveNewActionLog", log);
-        }
-
-        // Lấy danh sách các Ticket chưa đóng (Status != "Resolved") từ PostgreSQL gửi về cho Admin khi vừa mở app
-        public async Task<List<TicketDto>> GetActiveTickets()
-        {
-            return await _db.Tickets
-                .Where(t => t.Status != "Resolved")
-                .OrderByDescending(t => t.CreatedAt) // Sắp xếp phiếu mới nhất lên trên
-                .ToListAsync();
-        }
-
-        // Đánh dấu hoàn tất một Ticket, lưu vào PostgreSQL và ghi nhật ký thao tác
-        public async Task ResolveTicket(int ticketId)
-        {
-            var ticket = await _db.Tickets.FindAsync(ticketId);
-            if (ticket != null)
-            {
-                // Đổi trạng thái thành Resolved (Đã giải quyết)
-                ticket.Status = "Resolved";
-
-                // Ghi nhận hành động vào bảng ActionLogs
-                var log = new ActionLogDto
-                {
-                    TargetMachine = ticket.MachineName,
-                    CommandName = $"Hoàn tất Ticket #{ticket.Id} ({ticket.Description})",
-                    ExecutedBy = "IT Admin",
-                    ExecutedAt = DateTime.UtcNow
-                };
-                _db.ActionLogs.Add(log);
-
-                await _db.SaveChangesAsync();
-
-                // Báo cho các màn hình Admin khác biết để xóa Ticket khỏi bảng
-                await Clients.All.SendAsync("TicketResolved", ticketId);
-
-                // Cập nhật ngay tức thì vào bảng ActionLogs trên màn hình Admin
-                await Clients.All.SendAsync("ReceiveNewActionLog", log);
-            }
-        }
-        // 1. Nhận báo cáo kết quả thực thi từ Client   
+        // 3. Nhận báo cáo kết quả thực thi từ Client
         public async Task ReportCommandResult(string machineName, string commandName, bool isSuccess, string message)
         {
-            Console.WriteLine($"[ACTION RESULT] Máy {machineName} thực thi lệnh {commandName}: {(isSuccess ? "THÀNH CÔNG" : "THẤT BẠI")} - {message}");
+            var authenticatedMachine = RequireAgent();
 
-            // Phát thông báo kết quả sang IT Admin để hiện thông báo popup (Toast)
-            await Clients.Others.SendAsync("ReceiveCommandFeedback", machineName, commandName, isSuccess, message);
+            _logger.LogInformation("[ACTION RESULT] Máy {MachineName} thực thi lệnh {CommandName}: {Result} - {Message}",
+                authenticatedMachine, commandName, isSuccess ? "THÀNH CÔNG" : "THẤT BẠI", message);
+
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveCommandFeedback", authenticatedMachine, commandName, isSuccess, message);
         }
 
-        // 2. Lấy danh sách 20 lệnh can thiệp gần nhất từ PostgreSQL cho Admin xem lịch sử
+        // ===================== ADMIN =====================
+
+        // 4. Admin phát lệnh xuống đúng máy Client và ghi nhật ký lệnh
+        public async Task SendCommandToClient(string targetMachineName, string commandName)
+        {
+            var operatorName = RequireAdmin();
+
+            var command = RemoteCommands.Normalize(commandName)
+                ?? throw new HubException($"Lệnh không hợp lệ: {commandName}");
+
+            if (string.IsNullOrWhiteSpace(targetMachineName) || !_machineCache.IsOnline(targetMachineName))
+            {
+                throw new HubException($"Máy {targetMachineName} đang offline, không thể gửi lệnh.");
+            }
+
+            var log = await _actionLogService.CreateAsync(targetMachineName, command, operatorName);
+
+            await Clients.Group(MachineGroup(targetMachineName)).SendAsync("ExecuteCommand", targetMachineName, command);
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveNewActionLog", log);
+        }
+
+        // 5. Lấy danh sách máy trạm (kể cả máy đang offline) cho Admin khi vừa mở ứng dụng
+        public List<MachineStatusDto> GetMachines()
+        {
+            RequireAdmin();
+            return _machineCache.GetAll();
+        }
+
+        // 6. Lấy danh sách các Ticket chưa đóng
+        public async Task<List<TicketDto>> GetActiveTickets()
+        {
+            RequireAdmin();
+            return await _ticketService.GetActiveAsync();
+        }
+
+        // 7. Đánh dấu hoàn tất một Ticket, lưu vào PostgreSQL và ghi nhật ký thao tác
+        public async Task ResolveTicket(int ticketId)
+        {
+            var operatorName = RequireAdmin();
+
+            var log = await _ticketService.ResolveAsync(ticketId, operatorName);
+            if (log != null)
+            {
+                await Clients.Group(AdminsGroup).SendAsync("TicketResolved", ticketId);
+                await Clients.Group(AdminsGroup).SendAsync("ReceiveNewActionLog", log);
+            }
+        }
+
+        // 8. Lấy danh sách 20 lệnh can thiệp gần nhất
         public async Task<List<ActionLogDto>> GetRecentActionLogs()
         {
-            return await _db.ActionLogs
-                .OrderByDescending(a => a.ExecutedAt)
-                .Take(20)
-                .ToListAsync();
+            RequireAdmin();
+            return await _actionLogService.GetRecentAsync(20);
+        }
+
+        // ===================== Helpers =====================
+
+        private string RequireAgent()
+        {
+            if (Context.Items.TryGetValue(RoleKey, out var role) && role is ClientRole.Agent
+                && Context.Items[MachineKey] is string machine)
+            {
+                return machine;
+            }
+            throw new HubException("Không có quyền: chỉ Agent máy trạm được gọi chức năng này.");
+        }
+
+        private string RequireAdmin()
+        {
+            if (Context.Items.TryGetValue(RoleKey, out var role) && role is ClientRole.Admin)
+            {
+                return Context.Items[OperatorKey] as string ?? "IT Admin";
+            }
+            throw new HubException("Không có quyền: chỉ IT Admin được gọi chức năng này.");
         }
     }
 }

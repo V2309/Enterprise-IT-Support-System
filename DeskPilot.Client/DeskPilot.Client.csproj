@@ -6,14 +6,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- Nén file exe khi publish dạng single-file self-contained (giảm đáng kể dung lượng) -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
 		<PackageReference Include="WPF-UI" Version="4.3.0" />
-		<PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.0" />
+		<PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
 	</ItemGroup>
 	<ItemGroup>
 	  <ProjectReference Include="..\DeskPilot.Shared\DeskPilot.Shared.csproj" />
@@ -21,6 +23,11 @@
 	<ItemGroup>
 	  <None Update="appsettings.json">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	    <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+	  </None>
+	  <None Update="appsettings.local.json" Condition="Exists('appsettings.local.json')">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	    <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 	  </None>
 	</ItemGroup>
 	<ItemGroup>

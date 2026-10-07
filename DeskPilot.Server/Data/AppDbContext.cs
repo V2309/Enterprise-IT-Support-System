@@ -1,6 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
-using DeskPilot.Shared;
-using System;
+using DeskPilot.Server.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace DeskPilot.Server.Data
 {
@@ -10,33 +9,20 @@ namespace DeskPilot.Server.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
         // Bảng lưu danh sách thiết bị và trạng thái mới nhất
-        public DbSet<MachineStatusEntity> Machines => Set<MachineStatusEntity>();
+        public DbSet<Machine> Machines => Set<Machine>();
 
         // Bảng lưu danh sách ticket hỗ trợ
-        public DbSet<TicketDto> Tickets => Set<TicketDto>();
+        public DbSet<Ticket> Tickets => Set<Ticket>();
 
         // Bảng lưu lịch sử thực thi lệnh (Audit Log)
-        public DbSet<ActionLogDto> ActionLogs => Set<ActionLogDto>();
+        public DbSet<ActionLog> ActionLogs => Set<ActionLog>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Dùng MachineName làm khóa chính cho bảng Machines
-            modelBuilder.Entity<MachineStatusEntity>().HasKey(m => m.MachineName);
+            // Tự động nạp cấu hình Fluent API từ Data/Configuration
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         }
-    }
-
-    // Entity ánh xạ bảng Machines trong database
-    public class MachineStatusEntity
-    {
-        public string MachineName { get; set; } = string.Empty;
-        public string UserName { get; set; } = string.Empty;
-        public double RamUsagePercent { get; set; }
-        public double FreeDiskSpaceGB { get; set; }
-        public bool IsOnline { get; set; }
-        public string SpoolerStatus { get; set; } = "Running";
-        public string StatusMessage { get; set; } = "Bình thường";
-        public DateTime LastSeen { get; set; } = DateTime.Now;
     }
 }

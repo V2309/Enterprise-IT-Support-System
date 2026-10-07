@@ -9,8 +9,7 @@
 [Dd]ebug/
 [Rr]elease/
 TestResults/
-[Pp]ublish/
-*.lnk
+**/publish/
 
 # Node / Frontend
 node_modules/
@@ -31,6 +30,7 @@ target/
 .env.*
 !.env.example
 appsettings.*.local.json
+appsettings.local.json
 
 # OS
 Thumbs.db

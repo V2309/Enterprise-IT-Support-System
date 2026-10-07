@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   deskpilot-server:
     build:
@@ -9,7 +7,10 @@ services:
     restart: always
     ports:
       - "5000:5000"
+    # Các giá trị bí mật (chuỗi kết nối, API key) được khai báo trong file .env (không commit). Xem .env.example
+    env_file:
+      - .env
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      # Dán chuỗi kết nối Neon Postgres của bạn vào đây (nhớ giữ nguyên SSL Mode=Require)
-      - ConnectionStrings__DefaultConnection=Host=ep-noisy-unit-b8vdhozk-pooler.c-14.us-east-1.aws.neon.tech;Port=5432;Database=neondb;Username=neondb_owner;Password=npg_UgCV5Aa6TWnm;SSL Mode=Require;Channel Binding=Require;Trust Server Certificate=true
+      # Bật để Server tự áp dụng migration khi khởi động (tắt nếu chạy migration thủ công)
+      - Database__MigrateOnStartup=${DESKPILOT_MIGRATE_ON_STARTUP:-true}

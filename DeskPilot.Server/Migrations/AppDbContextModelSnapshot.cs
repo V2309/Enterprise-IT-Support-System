@@ -22,98 +22,213 @@ namespace DeskPilot.Server.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("DeskPilot.Server.Data.MachineStatusEntity", b =>
-                {
-                    b.Property<string>("MachineName")
-                        .HasColumnType("text");
-
-                    b.Property<double>("FreeDiskSpaceGB")
-                        .HasColumnType("double precision");
-
-                    b.Property<bool>("IsOnline")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("LastSeen")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<double>("RamUsagePercent")
-                        .HasColumnType("double precision");
-
-                    b.Property<string>("SpoolerStatus")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StatusMessage")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("UserName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("MachineName");
-
-                    b.ToTable("Machines");
-                });
-
-            modelBuilder.Entity("DeskPilot.Shared.ActionLogDto", b =>
+            modelBuilder.Entity("DeskPilot.Server.Models.ActionLog", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("CommandName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("command_name");
 
                     b.Property<DateTime>("ExecutedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("executed_at")
+                        .HasDefaultValueSql("NOW()");
 
                     b.Property<string>("ExecutedBy")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("IT Admin")
+                        .HasColumnName("executed_by");
 
                     b.Property<string>("TargetMachine")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("target_machine");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("pk_action_logs");
 
-                    b.ToTable("ActionLogs");
+                    b.HasIndex("ExecutedAt")
+                        .HasDatabaseName("ix_action_logs_executed_at");
+
+                    b.ToTable("action_logs", (string)null);
                 });
 
-            modelBuilder.Entity("DeskPilot.Shared.TicketDto", b =>
+            modelBuilder.Entity("DeskPilot.Server.Models.Machine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<double>("CpuUsagePercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("cpu_usage_percent");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<double>("DiskUsagePercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("disk_usage_percent");
+
+                    b.Property<double>("FreeDiskSpaceGB")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("free_disk_space_gb");
+
+                    b.Property<bool>("IsOnline")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_online");
+
+                    b.Property<DateTime>("LastSeen")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("MachineName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_name");
+
+                    b.Property<double>("RamUsagePercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("ram_usage_percent");
+
+                    b.Property<string>("SpoolerStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("Running")
+                        .HasColumnName("spooler_status");
+
+                    b.Property<string>("StatusMessage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasDefaultValue("Bình thường")
+                        .HasColumnName("status_message");
+
+                    b.Property<double>("TotalDiskSpaceGB")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("total_disk_space_gb");
+
+                    b.Property<double>("TotalRamGB")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("total_ram_gb");
+
+                    b.Property<double>("UsedRamGB")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(0.0)
+                        .HasColumnName("used_ram_gb");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_machines");
+
+                    b.HasIndex("MachineName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_machines_machine_name");
+
+                    b.HasIndex("IsOnline", "LastSeen")
+                        .HasDatabaseName("ix_machines_is_online_last_seen");
+
+                    b.ToTable("machines", (string)null);
+                });
+
+            modelBuilder.Entity("DeskPilot.Server.Models.Ticket", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("NOW()");
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .HasColumnName("description");
 
                     b.Property<string>("MachineName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("machine_name");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("Open")
+                        .HasColumnName("status");
 
                     b.Property<string>("UserName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("user_name");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("pk_tickets");
 
-                    b.ToTable("Tickets");
+                    b.HasIndex("MachineName")
+                        .HasDatabaseName("ix_tickets_machine_name");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_tickets_status");
+
+                    b.ToTable("tickets", (string)null);
                 });
 #pragma warning restore 612, 618
         }

@@ -7,6 +7,9 @@ namespace DeskPilot.Client.Services
 {
     public class HardwareMonitorService
     {
+        private static readonly string SystemDrive =
+            Path.GetPathRoot(Environment.SystemDirectory) is { Length: > 0 } root ? root : "C:\\";
+
         public MachineStatusDto GetCurrentStatus()
         {
             var status = new MachineStatusDto
@@ -14,13 +17,13 @@ namespace DeskPilot.Client.Services
                 MachineName = Environment.MachineName,
                 UserName = Environment.UserName,
                 IsOnline = true,
-                LastSeen = DateTime.Now
+                LastSeen = DateTime.UtcNow
             };
 
-            // 1. Lấy thông tin dung lượng ổ C
+            // 1. Lấy thông tin dung lượng ổ hệ thống (ổ cài Windows, thường là C:)
             try
             {
-                var driveC = new DriveInfo("C");
+                var driveC = new DriveInfo(SystemDrive);
                 if (driveC.IsReady)
                 {
                     double total = Math.Round(driveC.TotalSize / (1024.0 * 1024 * 1024), 0);
@@ -103,7 +106,7 @@ namespace DeskPilot.Client.Services
                 }
             }
             catch { }
-            return 25.0; // fallback
+            return 0.0; // Lần đo đầu tiên chưa có mẫu trước đó để so sánh
         }
 
         [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]

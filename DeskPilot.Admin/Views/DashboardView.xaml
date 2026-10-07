@@ -41,6 +41,67 @@
             </Setter>
         </Style>
 
+        <!-- Nút Xem Biểu Đồ Lịch Sử trên Card máy -->
+        <Style x:Key="MetricsChartButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#eef2ff"/>
+            <Setter Property="BorderBrush" Value="#c7d2fe"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#4f46e5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#e0e7ff"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#a5b4fc"/>
+                                <Setter Property="Foreground" Value="#4338ca"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#c7d2fe"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Nút Lọc Bộ Đo trong Modal Biểu Đồ -->
+        <Style x:Key="ChartFilterTabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#64748b"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#f1f5f9"/>
+                                <Setter Property="Foreground" Value="#1e293b"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Thẻ thống kê đầu trang -->
         <Style x:Key="StatPillStyle" TargetType="Border">
             <Setter Property="Background" Value="#ffffff"/>
@@ -53,11 +114,11 @@
     </UserControl.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <!-- Header & Thống kê -->
-                <RowDefinition Height="*"/>
-                <!-- Grid các card máy -->
+        <!-- ================= 1. KHUNG CHÍNH DASHBOARD (LUÔN SÁNG RÕ, KHÔNG BỊ LÀM TỐI) ================= -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Header & Thống kê -->
+                <RowDefinition Height="*"/>    <!-- Grid các card máy -->
             </Grid.RowDefinitions>
 
             <!-- Hàng 0: Header & Thống kê nhanh -->
@@ -169,37 +230,49 @@
                                         </Border>
                                     </DockPanel>
 
-                                    <!-- 3 Thanh đo tài nguyên phần cứng (Thiết kế thoáng đãng, số liệu phân tách rõ ràng) -->
-                                    <StackPanel Margin="0,10,0,16">
+                                    <!-- 3 Thanh đo tài nguyên phần cứng -->
+                                    <StackPanel Margin="0,8,0,12">
                                         <!-- 1. RAM -->
-                                        <Grid Margin="0,0,0,5">
+                                        <Grid Margin="0,0,0,4">
                                             <TextBlock Text="RAM" Foreground="#64748b" FontSize="11.5" FontWeight="SemiBold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding RamUsagePercent, StringFormat='{}{0}%'}" FontSize="12.5" FontWeight="Bold" Foreground="#0f172a" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding RamUsagePercent, StringFormat='{}{0}%'}" FontSize="12" FontWeight="Bold" Foreground="#0f172a" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
-                                        <Border Background="#f1f5f9" CornerRadius="3" Height="6" Margin="0,0,0,10">
-                                            <ProgressBar Value="{Binding RamUsagePercent}" Height="6" BorderThickness="0" Background="Transparent" Foreground="#10b981"/>
+                                        <Border Background="#f1f5f9" CornerRadius="3" Height="5" Margin="0,0,0,8">
+                                            <ProgressBar Value="{Binding RamUsagePercent}" Height="5" BorderThickness="0" Background="Transparent" Foreground="#10b981"/>
                                         </Border>
 
                                         <!-- 2. CPU -->
-                                        <Grid Margin="0,0,0,5">
+                                        <Grid Margin="0,0,0,4">
                                             <TextBlock Text="CPU" Foreground="#64748b" FontSize="11.5" FontWeight="SemiBold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0}%'}" FontSize="12.5" FontWeight="Bold" Foreground="#0f172a" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0}%'}" FontSize="12" FontWeight="Bold" Foreground="#0f172a" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
-                                        <Border Background="#f1f5f9" CornerRadius="3" Height="6" Margin="0,0,0,10">
-                                            <ProgressBar Value="{Binding CpuUsagePercent}" Height="6" BorderThickness="0" Background="Transparent" Foreground="#2563eb"/>
+                                        <Border Background="#f1f5f9" CornerRadius="3" Height="5" Margin="0,0,0,8">
+                                            <ProgressBar Value="{Binding CpuUsagePercent}" Height="5" BorderThickness="0" Background="Transparent" Foreground="#2563eb"/>
                                         </Border>
 
                                         <!-- 3. Ổ C -->
-                                        <Grid Margin="0,0,0,5">
+                                        <Grid Margin="0,0,0,4">
                                             <TextBlock Text="Ổ C" Foreground="#64748b" FontSize="11.5" FontWeight="SemiBold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding FreeDiskSpaceGB, StringFormat='{}Trống {0} GB'}" FontSize="12" FontWeight="Bold" Foreground="#0f172a" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
-                                        <Border Background="#f1f5f9" CornerRadius="3" Height="6">
-                                            <ProgressBar Value="{Binding FreeDiskSpaceGB}" Maximum="120" Height="6" BorderThickness="0" Background="Transparent" Foreground="#f59e0b"/>
+                                        <Border Background="#f1f5f9" CornerRadius="3" Height="5">
+                                            <ProgressBar Value="{Binding FreeDiskSpaceGB}" Maximum="120" Height="5" BorderThickness="0" Background="Transparent" Foreground="#f59e0b"/>
                                         </Border>
                                     </StackPanel>
 
-                                    <!-- 3 Nút thao tác nhanh dưới mỗi card (Rộng rãi, sắc nét, không bị khuất chữ) -->
+                                    <!-- NÚT XEM BIỂU ĐỒ LỊCH SỬ BIẾN THIÊN (METRICS HISTORY) -->
+                                    <Button Style="{StaticResource MetricsChartButtonStyle}" 
+                                            Click="BtnViewMetricsHistory_Click" 
+                                            Margin="0,0,0,10"
+                                            ToolTip="Xem đồ thị đường (Line Chart) biến thiên mức sử dụng RAM và Ổ C theo thời gian">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <Path Width="13" Height="13" Stretch="Uniform" Fill="#4f46e5" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                  Data="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>
+                                            <TextBlock Text="Biểu đồ lịch sử (RAM / Ổ C)" FontSize="11.5" FontWeight="SemiBold" Foreground="#4f46e5" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- 3 Nút thao tác nhanh dưới mỗi card -->
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -219,5 +292,161 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+        </Grid>
+
+        <!-- ================= 2. MODAL BIỂU ĐỒ NỔI ĐÈ LÊN MÀN HÌNH (NỀN TRONG SUỐT, HOÀN TOÀN KHÔNG CÓ LỚP PHỦ ĐEN MỜ) ================= -->
+        <Grid x:Name="MetricsModalBackdrop" Panel.ZIndex="999" Visibility="Collapsed" 
+              Background="Transparent" MouseDown="Backdrop_MouseDown">
+            <!-- Modal Card Nổi bật với đổ bóng mềm mại cao cấp -->
+            <Border Width="920" MaxHeight="660" Background="#ffffff" CornerRadius="20"
+                    BorderBrush="#cbd5e1" BorderThickness="1" Padding="26,22,26,22"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MouseDown="ModalCard_MouseDown">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="48" ShadowDepth="10" Opacity="0.18" Color="#0f172a" Direction="270"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header + Close -->
+                        <RowDefinition Height="Auto"/> <!-- 4 KPI Stat Cards -->
+                        <RowDefinition Height="Auto"/> <!-- Filter Tabs + Legend -->
+                        <RowDefinition Height="Auto"/> <!-- Canvas Line Chart -->
+                        <RowDefinition Height="Auto"/> <!-- Recent Samples Log -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Hàng 0: Header & Nút đóng ✕ -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,16">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="42" Height="42" CornerRadius="12" Margin="0,0,14,0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#4f46e5" Offset="0.0"/>
+                                        <GradientStop Color="#10b981" Offset="1.0"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Path Width="20" Height="20" Stretch="Uniform" Fill="#ffffff" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="TxtModalMachineName" Text="PC-KETOAN-01" FontSize="17" FontWeight="Bold" Foreground="#0f172a"/>
+                                    <Border x:Name="ModalOnlineBadge" Background="#ecfdf5" BorderBrush="#d1fae5" BorderThickness="1" CornerRadius="10" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtModalStatus" Text="Online" FontSize="11" FontWeight="SemiBold" Foreground="#059669"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock x:Name="TxtModalMachineSub" Text="Người dùng: Nguyễn Văn A • Lấy mẫu định kỳ theo thời gian thực" FontSize="12" Foreground="#64748b" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Nút đóng ✕ -->
+                        <Button DockPanel.Dock="Right" ToolTip="Đóng biểu đồ" Width="32" Height="32" Cursor="Hand" Click="BtnCloseMetricsModal_Click" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="closeBdr" Background="#f1f5f9" CornerRadius="16">
+                                        <Path Width="10" Height="10" Stretch="Uniform" Fill="#64748b" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="closeBdr" Property="Background" Value="#fee2e2"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </DockPanel>
+
+                    <!-- Hàng 1: 4 Thẻ KPI Tóm Tắt (RAM Hiện tại, Đỉnh RAM, RAM Trung bình, Ổ đĩa C) -->
+                    <Grid Grid.Row="1" Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- KPI 1: RAM Hiện tại -->
+                        <Border Grid.Column="0" Background="#f8fafc" BorderBrush="#e2e8f0" BorderThickness="1" CornerRadius="12" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Text="RAM HIỆN TẠI" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748b"/>
+                                <TextBlock x:Name="TxtModalCurrentRam" Text="68.5%" FontSize="18" FontWeight="Bold" Foreground="#10b981" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- KPI 2: Đỉnh RAM (Peak) -->
+                        <Border Grid.Column="2" Background="#f8fafc" BorderBrush="#e2e8f0" BorderThickness="1" CornerRadius="12" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Text="ĐỈNH RAM (PEAK)" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748b"/>
+                                <TextBlock x:Name="TxtModalPeakRam" Text="84.2%" FontSize="18" FontWeight="Bold" Foreground="#f59e0b" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- KPI 3: RAM Trung bình -->
+                        <Border Grid.Column="4" Background="#f8fafc" BorderBrush="#e2e8f0" BorderThickness="1" CornerRadius="12" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Text="RAM TRUNG BÌNH" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748b"/>
+                                <TextBlock x:Name="TxtModalAvgRam" Text="61.4%" FontSize="18" FontWeight="Bold" Foreground="#0f172a" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- KPI 4: Dung lượng Ổ C -->
+                        <Border Grid.Column="6" Background="#f8fafc" BorderBrush="#e2e8f0" BorderThickness="1" CornerRadius="12" Padding="14,10">
+                            <StackPanel>
+                                <TextBlock Text="DUNG LƯỢNG Ổ C" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748b"/>
+                                <TextBlock x:Name="TxtModalDiskStatus" Text="Trống 42.5 GB" FontSize="16" FontWeight="Bold" Foreground="#4f46e5" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Hàng 2: Bộ lọc Series (Tất cả / Chỉ RAM / Chỉ Ổ C) + Chú giải Legend -->
+                    <DockPanel Grid.Row="2" Margin="0,0,0,10">
+                        <!-- Bộ nút lọc bên trái -->
+                        <Border DockPanel.Dock="Left" Background="#f1f5f9" CornerRadius="8" Padding="3">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="BtnFilterAll" Content="Tất cả (RAM &amp; Ổ C)" Style="{StaticResource ChartFilterTabButtonStyle}" Click="BtnFilterAll_Click"/>
+                                <Button x:Name="BtnFilterRam" Content="Chỉ xem RAM (%)" Style="{StaticResource ChartFilterTabButtonStyle}" Click="BtnFilterRam_Click"/>
+                                <Button x:Name="BtnFilterDisk" Content="Chỉ xem Ổ C (%)" Style="{StaticResource ChartFilterTabButtonStyle}" Click="BtnFilterDisk_Click"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Chú giải Legend bên phải -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- RAM legend -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
+                                <Border Width="16" Height="3" Background="#10b981" CornerRadius="1.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="RAM Usage (%)" FontSize="11.5" Foreground="#334155" FontWeight="Medium"/>
+                            </StackPanel>
+                            <!-- Disk legend -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
+                                <Border Width="16" Height="3" Background="#6366f1" CornerRadius="1.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Disk Usage (%)" FontSize="11.5" Foreground="#334155" FontWeight="Medium"/>
+                            </StackPanel>
+                            <!-- Alert Threshold legend -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="16" Height="1" BorderBrush="#ef4444" BorderThickness="1,0,0,0" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Ngưỡng đỏ 85%" FontSize="11.5" Foreground="#dc2626"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Hàng 3: Canvas Line Chart Biến Thiên Thời Gian Thực -->
+                    <Border Grid.Row="3" Background="#f8fafc" BorderBrush="#e2e8f0" BorderThickness="1" CornerRadius="14" Padding="12,10" Margin="0,0,0,14">
+                        <Canvas x:Name="ChartCanvas" Height="220" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
+                    </Border>
+
+                    <!-- Hàng 4: 5 Mốc Đo Gần Nhất (Recent Samples Log) -->
+                    <Border Grid.Row="4" Background="#ffffff" BorderBrush="#f1f5f9" BorderThickness="0,1,0,0" Padding="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="CÁC MỐC ĐO GẦN NHẤT THEO THỜI GIAN THỰC (REAL-TIME SAMPLES)" FontSize="10" FontWeight="Bold" Foreground="#94a3b8" Margin="0,0,0,6"/>
+                            <StackPanel x:Name="RecentSamplesStack"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

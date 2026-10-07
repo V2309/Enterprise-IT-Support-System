@@ -13,6 +13,7 @@ namespace DeskPilot.Admin
         public DashboardViewModel ViewModel { get; } = new();
 
         // Cache các View để chuyển tab tức thì và giữ nguyên trạng thái cuộn
+        private ChatView? _chatView;
         private DashboardView? _dashboardView;
         private TicketsView? _ticketsView;
         private ActionLogsView? _actionLogsView;
@@ -28,18 +29,27 @@ namespace DeskPilot.Admin
             ModalDialogService.Register(this);
 
             // Khởi tạo các View dùng chung trong SPA
+            _chatView = new ChatView { DataContext = ViewModel };
             _dashboardView = new DashboardView { DataContext = ViewModel };
             _ticketsView = new TicketsView { DataContext = ViewModel };
             _actionLogsView = new ActionLogsView { DataContext = ViewModel };
 
-            // Mặc định hiển thị tab Tổng quan
-            ViewModel.CurrentView = _dashboardView;
-            ViewModel.CurrentTab = "Dashboard";
+            // Mặc định hiển thị tab Trợ lý AI khi vô lần đầu tiên (theo yêu cầu)
+            ViewModel.CurrentView = _chatView;
+            ViewModel.CurrentTab = "Chat";
 
             Loaded += async (s, e) =>
             {
                 await ViewModel.StartListeningAsync();
             };
+        }
+
+        // Điều hướng sang Tab Trợ lý AI
+        public void NavigateToChat()
+        {
+            _chatView ??= new ChatView { DataContext = ViewModel };
+            ViewModel.CurrentTab = "Chat";
+            ViewModel.CurrentView = _chatView;
         }
 
         // Điều hướng sang Tab Tổng quan (Dàn máy + Live Feed)
@@ -66,6 +76,7 @@ namespace DeskPilot.Admin
             ViewModel.CurrentView = _actionLogsView;
         }
 
+        private void NavChat_Click(object sender, RoutedEventArgs e) => NavigateToChat();
         private void NavOverview_Click(object sender, RoutedEventArgs e) => NavigateToOverview();
         private void NavTickets_Click(object sender, RoutedEventArgs e) => NavigateToTickets();
         private void NavLogs_Click(object sender, RoutedEventArgs e) => NavigateToLogs();
@@ -94,6 +105,8 @@ namespace DeskPilot.Admin
         #region IN-APP MODAL OVERLAY LOGIC
         public Task<bool> ShowModalAsync(string title, string message, ModalType type, string confirmText, string cancelText)
         {
+            // Nếu đang có modal khác mở, giải phóng awaiter cũ để không bị treo vĩnh viễn
+            _modalTcs?.TrySetResult(false);
             _modalTcs = new TaskCompletionSource<bool>();
 
             ModalTitle.Text = title;

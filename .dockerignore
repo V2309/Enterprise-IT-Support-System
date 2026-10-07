@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/publish/
+**/.vs/
+.git/
+.env
+**/appsettings.local.json
+**/*.user
+DeskPilot.Admin/
+DeskPilot.Client/
