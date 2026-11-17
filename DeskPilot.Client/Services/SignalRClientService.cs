@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -23,6 +27,9 @@ namespace DeskPilot.Client.Services
 
         // Sự kiện báo cho UI sau khi đã thực thi xong một lệnh từ Admin (tên lệnh, kết quả)
         public event Action<string, CommandResult>? OnRemoteCommandExecuted;
+
+        // Sự kiện khi nhận được tin nhắn chat (từ IT hoặc do chính mình gửi được broadcast lại)
+        public event Action<ChatMessageDto>? OnChatMessageReceived;
 
         public SignalRClientService(RunbookExecutor runbookExecutor)
         {
@@ -74,6 +81,12 @@ namespace DeskPilot.Client.Services
                 {
                     Debug.WriteLine($"[SignalR Client] Không gửi được kết quả lệnh: {ex.Message}");
                 }
+            });
+
+            // Lắng nghe tin nhắn chat từ IT Admin (hoặc tin nhắn chính mình gửi được xác nhận)
+            _hubConnection.On<ChatMessageDto>("ReceiveChatMessage", (chatMsg) =>
+            {
+                OnChatMessageReceived?.Invoke(chatMsg);
             });
 
             _hubConnection.Reconnecting += error =>
@@ -190,6 +203,103 @@ namespace DeskPilot.Client.Services
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SignalR Client] Gửi heartbeat thất bại: {ex.Message}");
+            }
+        }
+
+        public string ServerBaseUrl => _serverUrl.Replace("/supportHub", "", StringComparison.OrdinalIgnoreCase);
+
+        // Tải ảnh từ Stream lên ImageKit qua endpoint Server
+        public async Task<string> UploadImageStreamAsync(Stream stream, string fileName)
+        {
+            using var httpClient = new HttpClient();
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                httpClient.DefaultRequestHeaders.Add("X-Api-Key", _apiKey);
+            }
+
+            using var form = new MultipartFormDataContent();
+            var streamContent = new StreamContent(stream);
+            form.Add(streamContent, "file", fileName);
+
+            var uploadEndpoint = $"{ServerBaseUrl.TrimEnd('/')}/api/chat/upload";
+            var response = await httpClient.PostAsync(uploadEndpoint, form);
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"Lỗi khi tải ảnh lên server: {response.StatusCode} - {content}");
+            }
+
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("url", out var urlElement))
+            {
+                var url = urlElement.GetString();
+                if (!string.IsNullOrEmpty(url)) return url;
+            }
+
+            throw new InvalidOperationException("Server không trả về URL hình ảnh hợp lệ.");
+        }
+
+        // Tải ảnh từ file lên ImageKit qua endpoint Server
+        public async Task<string> UploadImageAsync(string filePath)
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException("File hình ảnh không tồn tại.", filePath);
+            }
+
+            using var fileStream = File.OpenRead(filePath);
+            return await UploadImageStreamAsync(fileStream, Path.GetFileName(filePath));
+        }
+
+        // Gửi tin nhắn chat từ nhân viên lên IT Support (hỗ trợ kèm ảnh ImageKit)
+        public async Task<ChatMessageDto?> SendChatMessageAsync(string message, string? imageUrl = null)
+        {
+            if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
+            {
+                await TryStartAsync();
+            }
+
+            if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
+            {
+                throw new InvalidOperationException("Chưa kết nối được tới Server! Vui lòng thử lại sau.");
+            }
+
+            try
+            {
+                return await _hubConnection.InvokeAsync<ChatMessageDto>(
+                    "SendChatMessage",
+                    Environment.UserName,
+                    message,
+                    imageUrl);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Không thể gửi tin nhắn: {ex.Message}", ex);
+            }
+        }
+
+        // Tải lịch sử chat của máy trạm này
+        public async Task<List<ChatMessageDto>> GetChatHistoryAsync()
+        {
+            if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
+            {
+                await TryStartAsync();
+            }
+
+            if (_hubConnection is null || _hubConnection.State != HubConnectionState.Connected)
+            {
+                return new List<ChatMessageDto>();
+            }
+
+            try
+            {
+                return await _hubConnection.InvokeAsync<List<ChatMessageDto>>("GetMyChatHistory", 50);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SignalR Client] Không tải được lịch sử chat: {ex.Message}");
+                return new List<ChatMessageDto>();
             }
         }
     }

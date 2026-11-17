@@ -17,6 +17,9 @@ namespace DeskPilot.Admin
         private DashboardView? _dashboardView;
         private TicketsView? _ticketsView;
         private ActionLogsView? _actionLogsView;
+        private DevicesView? _devicesView;
+        private ToolsView? _toolsView;
+        private MaintenanceView? _maintenanceView;
 
         private TaskCompletionSource<bool>? _modalTcs;
 
@@ -33,8 +36,11 @@ namespace DeskPilot.Admin
             _dashboardView = new DashboardView { DataContext = ViewModel };
             _ticketsView = new TicketsView { DataContext = ViewModel };
             _actionLogsView = new ActionLogsView { DataContext = ViewModel };
+            _devicesView = new DevicesView { DataContext = ViewModel };
+            _toolsView = new ToolsView { DataContext = ViewModel };
+            _maintenanceView = new MaintenanceView { DataContext = ViewModel };
 
-            // Mặc định hiển thị tab Trợ lý AI khi vô lần đầu tiên (theo yêu cầu)
+            // Mặc định hiển thị tab Trò chuyện khi vô lần đầu tiên
             ViewModel.CurrentView = _chatView;
             ViewModel.CurrentTab = "Chat";
 
@@ -44,7 +50,7 @@ namespace DeskPilot.Admin
             };
         }
 
-        // Điều hướng sang Tab Trợ lý AI
+        // Điều hướng sang Tab Trò chuyện
         public void NavigateToChat()
         {
             _chatView ??= new ChatView { DataContext = ViewModel };
@@ -76,10 +82,37 @@ namespace DeskPilot.Admin
             ViewModel.CurrentView = _actionLogsView;
         }
 
+        // Điều hướng sang Tab Quản lý Thiết bị
+        public void NavigateToDevices()
+        {
+            _devicesView ??= new DevicesView { DataContext = ViewModel };
+            ViewModel.CurrentTab = "Devices";
+            ViewModel.CurrentView = _devicesView;
+        }
+
+        // Điều hướng sang Tab Quản lý Công cụ
+        public void NavigateToTools()
+        {
+            _toolsView ??= new ToolsView { DataContext = ViewModel };
+            ViewModel.CurrentTab = "Tools";
+            ViewModel.CurrentView = _toolsView;
+        }
+
+        // Điều hướng sang Tab Kế hoạch Bảo trì
+        public void NavigateToMaintenance()
+        {
+            _maintenanceView ??= new MaintenanceView { DataContext = ViewModel };
+            ViewModel.CurrentTab = "Maintenance";
+            ViewModel.CurrentView = _maintenanceView;
+        }
+
         private void NavChat_Click(object sender, RoutedEventArgs e) => NavigateToChat();
         private void NavOverview_Click(object sender, RoutedEventArgs e) => NavigateToOverview();
         private void NavTickets_Click(object sender, RoutedEventArgs e) => NavigateToTickets();
         private void NavLogs_Click(object sender, RoutedEventArgs e) => NavigateToLogs();
+        private void NavDevices_Click(object sender, RoutedEventArgs e) => NavigateToDevices();
+        private void NavTools_Click(object sender, RoutedEventArgs e) => NavigateToTools();
+        private void NavMaintenance_Click(object sender, RoutedEventArgs e) => NavigateToMaintenance();
 
         private async void NavSettings_Click(object sender, RoutedEventArgs e)
         {

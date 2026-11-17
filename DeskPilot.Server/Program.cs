@@ -2,7 +2,9 @@ using DeskPilot.Server.Data;
 using DeskPilot.Server.Hubs;
 using DeskPilot.Server.Security;
 using DeskPilot.Server.Services;
+using DeskPilot.Server.Services.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +24,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString)
-           .UseSnakeCaseNamingConvention());
+           .UseSnakeCaseNamingConvention()
+           .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
 // 2. Xác thực bằng API key (Admin / Agent)
 var apiKeyOptions = builder.Configuration.GetSection(ApiKeyOptions.SectionName).Get<ApiKeyOptions>() ?? new ApiKeyOptions();
@@ -33,6 +36,14 @@ builder.Services.AddSingleton<MachineStateCache>();
 builder.Services.AddScoped<IMachineService, MachineService>();
 builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IActionLogService, ActionLogService>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<IToolService, ToolService>();
+builder.Services.AddScoped<IMaintenanceService, MaintenanceService>();
+builder.Services.AddScoped<IChatService, DeskPilot.Server.Services.Chat.ChatService>();
+
+// Cấu hình ImageKit và dịch vụ upload ảnh lên Cloud Storage
+builder.Services.Configure<ImageKitOptions>(builder.Configuration.GetSection(ImageKitOptions.SectionName));
+builder.Services.AddHttpClient<IImageStorageService, ImageKitStorageService>();
 
 // 4. Đăng ký dịch vụ SignalR và cấu hình CORS
 // Admin/Client là ứng dụng desktop (không gửi Origin) nên CORS chỉ cần cho các origin web được khai báo.

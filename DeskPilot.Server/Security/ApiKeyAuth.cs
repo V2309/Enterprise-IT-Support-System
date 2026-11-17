@@ -97,9 +97,19 @@ namespace DeskPilot.Server.Security
                     return;
                 }
 
-                // REST API chỉ dành cho Admin
-                if (isApi && role != ClientRole.Admin)
+                // Endpoint upload ảnh chat cho phép cả IT Admin lẫn Agent máy trạm
+                var isChatUpload = path.StartsWithSegments("/api/chat/upload");
+                if (isChatUpload)
                 {
+                    if (role != ClientRole.Admin && role != ClientRole.Agent)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        return;
+                    }
+                }
+                else if (isApi && role != ClientRole.Admin)
+                {
+                    // Các REST API quản trị khác chỉ dành cho IT Admin
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return;
                 }

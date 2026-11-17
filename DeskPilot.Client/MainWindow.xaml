@@ -141,8 +141,32 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Bên phải: Nút cài đặt, Thu nhỏ, Đóng -->
+                <!-- Bên phải: Nút Chat với IT, Cài đặt, Thu nhỏ, Đóng -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- Nút Mở Khung Chat với IT kèm Chấm đỏ thông báo -->
+                    <Grid Margin="0,0,8,0">
+                        <Button x:Name="BtnToggleChat" Click="BtnToggleChat_Click" Cursor="Hand" ToolTip="Trò chuyện trực tiếp với IT Support">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="btnBorder" Background="#eff6ff" BorderBrush="#bfdbfe" BorderThickness="1" CornerRadius="8" Padding="10,5">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <ui:SymbolIcon Symbol="Chat24" FontSize="14" Foreground="#2563eb" Margin="0,0,6,0"/>
+                                            <TextBlock x:Name="TxtChatBtnLabel" Text="Chat với IT" FontSize="12" FontWeight="SemiBold" Foreground="#2563eb"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="btnBorder" Property="Background" Value="#dbeafe"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Border x:Name="BadgeNewMessage" Background="#ef4444" CornerRadius="5" Width="10" Height="10"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-3,0"
+                                BorderBrush="#ffffff" BorderThickness="1.5" Visibility="Collapsed" IsHitTestVisible="False"/>
+                    </Grid>
+
                     <Button Style="{StaticResource WindowControlButtonStyle}" Click="SettingsButton_Click" ToolTip="Cài đặt" Margin="0,0,4,0">
                         <ui:SymbolIcon Symbol="Settings24" FontSize="17" Foreground="#64748b"/>
                     </Button>
@@ -155,13 +179,15 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- 2. Thân giao diện: Chia 2 cột (Trái: System Health & Sửa lỗi, Phải: Báo lỗi nhanh) -->
+            <!-- 2. Thân giao diện: Chuyển đổi giữa Dashboard và Khung Chat -->
             <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.15*"/>
-                    <ColumnDefinition Width="18"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+                <!-- 2.1 Dashboard chính: Chia 2 cột (Trái: System Health & Sửa lỗi, Phải: Báo lỗi nhanh) -->
+                <Grid x:Name="MainDashboardView" Visibility="Visible">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.15*"/>
+                        <ColumnDefinition Width="18"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
                 <!-- CỘT TRÁI -->
                 <Grid Grid.Column="0">
@@ -336,15 +362,21 @@
                                 </Grid.ColumnDefinitions>
                                 <Grid Grid.Column="0" VerticalAlignment="Center">
                                     <TextBox x:Name="TxtTicketIssue" 
-                                             Height="32" 
-                                             Padding="8,4" 
+                                             MinHeight="32" 
+                                             Padding="4,2" 
                                              Background="Transparent" 
                                              Foreground="#0f172a" 
                                              BorderThickness="0" 
                                              FontSize="12"
                                              VerticalContentAlignment="Center" 
                                              TextChanged="TxtTicketIssue_TextChanged"
-                                             KeyDown="TxtTicketIssue_KeyDown"/>
+                                             KeyDown="TxtTicketIssue_KeyDown">
+                                        <TextBox.Template>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Margin="0" Padding="{TemplateBinding Padding}"/>
+                                            </ControlTemplate>
+                                        </TextBox.Template>
+                                    </TextBox>
                                     <TextBlock x:Name="TxtTicketPlaceholder" 
                                                Text="Mô tả sự cố khác nếu có..." 
                                                Foreground="#94a3b8" 
@@ -407,6 +439,162 @@
                         </StackPanel>
                     </DockPanel>
                 </Grid>
+            </Grid>
+
+            <!-- 2.2 Khung Chat trực tiếp với IT Support -->
+            <Border x:Name="ChatOverlayView" Visibility="Collapsed" Background="#f8fafc" CornerRadius="12" BorderBrush="#e2e8f0" BorderThickness="1">
+                <Grid Margin="14,10,14,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header chat: Back button + Title -->
+                        <RowDefinition Height="*"/>    <!-- Danh sách tin nhắn cuộn -->
+                        <RowDefinition Height="Auto"/> <!-- Khung nhập tin nhắn gửi IT -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Header khung chat -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Left" Click="BtnBackToDashboard_Click" Cursor="Hand" Background="Transparent" BorderThickness="0" Padding="0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <ui:SymbolIcon Symbol="ArrowLeft24" FontSize="16" Foreground="#2563eb" Margin="0,0,6,0"/>
+                                <TextBlock Text="Quay lại" FontSize="12" FontWeight="SemiBold" Foreground="#2563eb"/>
+                            </StackPanel>
+                        </Button>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="Kênh hỗ trợ kỹ thuật trực tiếp" FontWeight="Bold" FontSize="13" Foreground="#0f172a" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Kết nối bảo mật tới đội ngũ IT DeskPilot" FontSize="10.5" Foreground="#10b981" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Danh sách tin nhắn chat -->
+                    <Border Grid.Row="1" Background="#ffffff" CornerRadius="10" BorderBrush="#e2e8f0" BorderThickness="1" Margin="0,0,0,10" Padding="12,10,6,10">
+                        <ScrollViewer x:Name="ClientChatScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="ClientChatMessagesStack" Margin="0,0,20,0"/>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Khung nhập tin nhắn phía dưới (hỗ trợ Preview ảnh đính kèm trước khi gửi) -->
+                    <StackPanel Grid.Row="2">
+                        <!-- Khung xem trước ảnh đính kèm trước khi bấm Gửi -->
+                        <Border x:Name="ClientAttachmentPreviewPanel" Visibility="Collapsed" Background="#f1f5f9" BorderBrush="#cbd5e1" BorderThickness="1" CornerRadius="8" Padding="6" Margin="0,0,0,6" HorizontalAlignment="Left">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Thumbnail ảnh -->
+                                <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6" ClipToBounds="True" Background="#e2e8f0">
+                                    <Image x:Name="ImgClientAttachmentThumbnail" Stretch="UniformToFill"/>
+                                </Border>
+                                <!-- Thông tin ảnh -->
+                                <StackPanel Grid.Column="1" Margin="8,0,12,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtClientAttachmentName" Text="Ảnh đính kèm" FontSize="11.5" FontWeight="SemiBold" Foreground="#0f172a" MaxWidth="160" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="Sẵn sàng gửi kèm tin nhắn" FontSize="10" Foreground="#64748b" Margin="0,1,0,0"/>
+                                </StackPanel>
+                                <!-- Nút X xóa ảnh khỏi preview -->
+                                <Button Grid.Column="2" Width="20" Height="20" Cursor="Hand" Click="BtnRemoveClientAttachment_Click" ToolTip="Xóa ảnh này" VerticalAlignment="Top" Margin="0,2,2,0">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="b" Background="#94a3b8" CornerRadius="10" Width="20" Height="20">
+                                                <Path Width="8" Height="8" Stretch="Uniform" Fill="#ffffff" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                      Data="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="b" Property="Background" Value="#ef4444"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Hàng nhập tin nhắn + Các nút chức năng -->
+                        <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" x:Name="ClientChatInputBorder" Background="#ffffff" BorderBrush="#cbd5e1" BorderThickness="1" CornerRadius="10" MinHeight="36" Padding="10,2">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsKeyboardFocused, ElementName=TxtClientChatInput}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#2563eb"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid VerticalAlignment="Center">
+                                <TextBox x:Name="TxtClientChatInput"
+                                         FontSize="12.5" Foreground="#0f172a"
+                                         Background="Transparent" BorderThickness="0"
+                                         VerticalContentAlignment="Center"
+                                         MinHeight="30"
+                                         Padding="2,2,2,2"
+                                         TextChanged="TxtClientChatInput_TextChanged"
+                                         KeyDown="TxtClientChatInput_KeyDown"
+                                         PreviewKeyDown="TxtClientChatInput_PreviewKeyDown">
+                                    <TextBox.Template>
+                                        <ControlTemplate TargetType="TextBox">
+                                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" Margin="0" Padding="{TemplateBinding Padding}"/>
+                                        </ControlTemplate>
+                                    </TextBox.Template>
+                                </TextBox>
+                                <TextBlock x:Name="TxtClientChatPlaceholder"
+                                           Text="Gõ tin nhắn gửi IT Support (nhấn Enter để gửi)..."
+                                           FontSize="12" Foreground="#94a3b8"
+                                           VerticalAlignment="Center" Margin="4,0,0,0"
+                                           IsHitTestVisible="False"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Nút Tải ảnh lên ImageKit -->
+                        <Button x:Name="BtnAttachClientChatImage" Grid.Column="1" Margin="6,0,0,0" Width="36" Height="36" Cursor="Hand" Click="BtnAttachClientChatImage_Click" ToolTip="Tải ảnh lên ImageKit">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="btnBorder" Background="#f1f5f9" BorderBrush="#cbd5e1" BorderThickness="1" CornerRadius="18" Width="36" Height="36">
+                                        <Path Width="16" Height="16" Stretch="Uniform" Fill="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Data="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="btnBorder" Property="Background" Value="#e2e8f0"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="btnBorder" Property="Background" Value="#cbd5e1"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- Nút Gửi tròn xanh dương với icon mũi tên sang phải -->
+                        <Button x:Name="BtnSendClientChat" Grid.Column="2" Margin="6,0,0,0" Width="36" Height="36" Cursor="Hand" Click="BtnSendClientChat_Click" ToolTip="Gửi tin nhắn">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="btnBorder" Background="#2563eb" CornerRadius="18" Width="36" Height="36">
+                                        <!-- Mũi tên gửi màu trắng -->
+                                        <Path Width="14" Height="14" Stretch="Uniform" Fill="#ffffff" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Data="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="btnBorder" Property="Background" Value="#1d4ed8"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="btnBorder" Property="Background" Value="#1e40af"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                </StackPanel>
+                </Grid>
+            </Border>
             </Grid>
         </Grid>
     </Border>

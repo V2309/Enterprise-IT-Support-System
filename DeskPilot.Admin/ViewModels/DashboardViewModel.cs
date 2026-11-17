@@ -1,11 +1,11 @@
+using DeskPilot.Admin.Services;
 using DeskPilot.Shared;
 using DeskPilot.Shared.DTO;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Toolkit.Uwp.Notifications;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -38,63 +38,25 @@ namespace DeskPilot.Admin.ViewModels
         public double FreeDiskSpaceGB { get; set; }
     }
 
-    public class DashboardViewModel : INotifyPropertyChanged
+    /// <summary>
+    /// ViewModel trung tâm (Core) quản lý kết nối SignalR, điều hướng Tab và khởi tạo hệ thống.
+    /// Các logic theo từng module được tách thành các file partial:
+    /// - DashboardViewModel.Machines.cs    (Giám sát máy trạm & thông số tài nguyên)
+    /// - DashboardViewModel.Tickets.cs     (Quản lý sự cố & Live feed)
+    /// - DashboardViewModel.Actions.cs     (Lệnh điều khiển từ xa & Action logs)
+    /// - DashboardViewModel.Chat.cs        (Kênh trò chuyện thời gian thực)
+    /// - DashboardViewModel.Devices.cs     (Quản lý thiết bị CNTT)
+    /// - DashboardViewModel.Tools.cs       (Quản lý công cụ kỹ thuật)
+    /// - DashboardViewModel.Maintenance.cs (Kế hoạch & lịch bảo trì định kỳ)
+    /// </summary>
+    public partial class DashboardViewModel : INotifyPropertyChanged
     {
         private HubConnection? _hubConnection;
         private readonly string _serverUrl;
         private readonly string _apiKey;
+        private readonly AdminApiClient _apiClient;
         private readonly SemaphoreSlim _connectLock = new(1, 1);
         private int _retryLoopRunning;
-        private readonly ConcurrentDictionary<string, DateTime> _lastAlertTimes = new();
-        private readonly ConcurrentDictionary<string, List<MetricPoint>> _machineHistories = new();
-
-        public event Action<string>? OnMetricsHistoryUpdated;
-
-        public List<MetricPoint> GetMetricsHistory(string machineName, double fallbackRam = 0.0, double fallbackDisk = 0.0)
-        {
-            var history = _machineHistories.GetOrAdd(machineName, _ => new List<MetricPoint>());
-            lock (history)
-            {
-                if (history.Count == 0 && (fallbackRam > 0 || fallbackDisk > 0))
-                {
-                    var machine = Machines.FirstOrDefault(m => m.MachineName.Equals(machineName, StringComparison.OrdinalIgnoreCase));
-                    history.Add(new MetricPoint
-                    {
-                        Timestamp = DateTime.Now,
-                        RamUsagePercent = fallbackRam,
-                        DiskUsagePercent = fallbackDisk,
-                        CpuUsagePercent = machine?.CpuUsagePercent ?? 0.0,
-                        FreeDiskSpaceGB = machine?.FreeDiskSpaceGB ?? 0.0
-                    });
-                }
-                return new List<MetricPoint>(history);
-            }
-        }
-
-        public void AppendMetricPoint(MachineStatusDto status)
-        {
-            var history = _machineHistories.GetOrAdd(status.MachineName, _ => new List<MetricPoint>());
-            lock (history)
-            {
-                double diskPercent = status.DiskUsagePercent > 0 ? status.DiskUsagePercent :
-                    (status.TotalDiskSpaceGB > 0 ? Math.Round((status.TotalDiskSpaceGB - status.FreeDiskSpaceGB) / status.TotalDiskSpaceGB * 100, 1) : 0.0);
-
-                history.Add(new MetricPoint
-                {
-                    Timestamp = DateTime.Now,
-                    RamUsagePercent = status.RamUsagePercent,
-                    DiskUsagePercent = diskPercent,
-                    CpuUsagePercent = status.CpuUsagePercent,
-                    FreeDiskSpaceGB = status.FreeDiskSpaceGB
-                });
-
-                if (history.Count > 30)
-                {
-                    history.RemoveAt(0);
-                }
-            }
-            OnMetricsHistoryUpdated?.Invoke(status.MachineName);
-        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string? name = null)
@@ -102,7 +64,7 @@ namespace DeskPilot.Admin.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
 
-        // Điều hướng SPA (Website-like): Lưu view hiện tại đang hiển thị
+        // ================= ĐIỀU HƯỚNG SPA & TABS =================
         private object? _currentView;
         public object? CurrentView
         {
@@ -131,6 +93,9 @@ namespace DeskPilot.Admin.ViewModels
                     OnPropertyChanged(nameof(IsTicketsActive));
                     OnPropertyChanged(nameof(IsLogsActive));
                     OnPropertyChanged(nameof(IsChatActive));
+                    OnPropertyChanged(nameof(IsDevicesActive));
+                    OnPropertyChanged(nameof(IsToolsActive));
+                    OnPropertyChanged(nameof(IsMaintenanceActive));
                 }
             }
         }
@@ -139,8 +104,10 @@ namespace DeskPilot.Admin.ViewModels
         public bool IsTicketsActive => CurrentTab == "Tickets";
         public bool IsLogsActive => CurrentTab == "Logs";
         public bool IsChatActive => CurrentTab == "Chat";
+        public bool IsDevicesActive => CurrentTab == "Devices";
+        public bool IsToolsActive => CurrentTab == "Tools";
+        public bool IsMaintenanceActive => CurrentTab == "Maintenance";
 
-        // Tìm kiếm toàn cục từ Header
         private string _searchText = "";
         public string SearchText
         {
@@ -156,7 +123,6 @@ namespace DeskPilot.Admin.ViewModels
             }
         }
 
-        // Lọc theo phòng ban từ Sidebar
         private string _selectedDepartment = "Tất cả phòng ban";
         public string SelectedDepartment
         {
@@ -171,16 +137,7 @@ namespace DeskPilot.Admin.ViewModels
             }
         }
 
-        public ObservableCollection<MachineStatusDto> Machines { get; set; } = new();
-        public ObservableCollection<MachineStatusDto> FilteredMachines { get; set; } = new();
-        public ObservableCollection<TicketDto> Tickets { get; set; } = new();
-        public ObservableCollection<ActionLogDto> ActionLogs { get; set; } = new();
-        public ObservableCollection<IncidentFeedItem> LiveIncidents { get; set; } = new();
-
-        public int OnlineCount => Machines.Count(m => m.IsOnline);
-        public int OfflineCount => Machines.Count(m => !m.IsOnline);
-        public int TotalMachinesCount => Machines.Count;
-
+        // ================= CONSTRUCTOR =================
         public DashboardViewModel()
         {
             var config = new ConfigurationBuilder()
@@ -192,6 +149,7 @@ namespace DeskPilot.Admin.ViewModels
 
             _serverUrl = config["ServerSettings:HubUrl"] ?? "http://localhost:5000/supportHub";
             _apiKey = config["ServerSettings:ApiKey"] ?? string.Empty;
+            _apiClient = new AdminApiClient(_serverUrl, _apiKey);
 
             Machines.CollectionChanged += (s, e) =>
             {
@@ -200,72 +158,7 @@ namespace DeskPilot.Admin.ViewModels
             };
         }
 
-        // Đồng bộ toàn bộ thông số từ DTO Server gửi về vào đối tượng đang hiển thị trên UI
-        private static void ApplyStatus(MachineStatusDto target, MachineStatusDto source)
-        {
-            target.UserName = source.UserName;
-            target.RamUsagePercent = source.RamUsagePercent;
-            target.CpuUsagePercent = source.CpuUsagePercent;
-            target.TotalRamGB = source.TotalRamGB;
-            target.UsedRamGB = source.UsedRamGB;
-            target.TotalDiskSpaceGB = source.TotalDiskSpaceGB;
-            target.FreeDiskSpaceGB = source.FreeDiskSpaceGB;
-            target.DiskUsagePercent = source.DiskUsagePercent;
-            target.SpoolerStatus = source.SpoolerStatus;
-            target.StatusMessage = source.StatusMessage;
-            target.IsOnline = source.IsOnline;
-            target.LastSeen = source.LastSeen;
-        }
-
-        private MachineStatusDto? FindMachine(string machineName) =>
-            Machines.FirstOrDefault(m => m.MachineName.Equals(machineName, StringComparison.OrdinalIgnoreCase));
-
-        private void UpdateCounts()
-        {
-            OnPropertyChanged(nameof(OnlineCount));
-            OnPropertyChanged(nameof(OfflineCount));
-            OnPropertyChanged(nameof(TotalMachinesCount));
-        }
-
-        public void FilterMachines()
-        {
-            FilteredMachines.Clear();
-            var query = SearchText.Trim().ToLowerInvariant();
-
-            foreach (var m in Machines)
-            {
-                if (string.IsNullOrEmpty(query) ||
-                    m.MachineName.ToLowerInvariant().Contains(query) ||
-                    m.UserName.ToLowerInvariant().Contains(query))
-                {
-                    FilteredMachines.Add(m);
-                }
-            }
-        }
-
-        public void AddIncident(string machine, string user, string title, string tag, string dotColor, string tagBg, string tagFg)
-        {
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                LiveIncidents.Insert(0, new IncidentFeedItem
-                {
-                    TimeStr = DateTime.Now.ToString("HH:mm"),
-                    MachineName = machine,
-                    UserName = user,
-                    Title = title,
-                    Tag = tag,
-                    TagBackground = tagBg,
-                    TagForeground = tagFg,
-                    DotColor = dotColor
-                });
-
-                if (LiveIncidents.Count > 30)
-                {
-                    LiveIncidents.RemoveAt(LiveIncidents.Count - 1);
-                }
-            });
-        }
-
+        // ================= SIGNALR REAL-TIME LISTENERS =================
         public async Task StartListeningAsync()
         {
             _hubConnection = new HubConnectionBuilder()
@@ -277,7 +170,7 @@ namespace DeskPilot.Admin.ViewModels
                 .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
                 .Build();
 
-            // 1. Lắng nghe cập nhật phần cứng từ máy Client
+            // 1. Nhận thông số phần cứng từ máy Client
             _hubConnection.On<MachineStatusDto>("ReceiveMachineStatus", (status) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -299,7 +192,7 @@ namespace DeskPilot.Admin.ViewModels
                 });
             });
 
-            // 2. Lắng nghe Ticket mới phát sinh theo thời gian thực
+            // 2. Nhận Ticket mới phát sinh
             _hubConnection.On<TicketDto>("ReceiveNewTicket", (ticket) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -307,10 +200,8 @@ namespace DeskPilot.Admin.ViewModels
                     Tickets.Insert(0, ticket);
                     System.Media.SystemSounds.Exclamation.Play();
 
-                    // Thêm vào dòng thời gian Live Feed
                     AddIncident(ticket.MachineName, ticket.UserName, ticket.Description, "Sự cố", "#ef4444", "#fdf2f8", "#db2777");
 
-                    // Bắn thông báo Windows
                     new ToastContentBuilder()
                         .AddText($"[TICKET MỚI] Từ {ticket.MachineName} ({ticket.UserName})")
                         .AddText(ticket.Description)
@@ -318,7 +209,7 @@ namespace DeskPilot.Admin.ViewModels
                 });
             });
 
-            // Lắng nghe khi có Ticket được đóng
+            // 3. Nhận sự kiện Ticket được đóng
             _hubConnection.On<int>("TicketResolved", (resolvedTicketId) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -332,7 +223,7 @@ namespace DeskPilot.Admin.ViewModels
                 });
             });
 
-            // Lắng nghe máy Offline
+            // 4. Nhận sự kiện máy Offline
             _hubConnection.On<string>("MachineWentOffline", (machineName) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -348,7 +239,7 @@ namespace DeskPilot.Admin.ViewModels
                 });
             });
 
-            // Lắng nghe kết quả thực thi lệnh gửi về từ máy Client
+            // 5. Nhận kết quả thực thi lệnh từ máy trạm
             _hubConnection.On<string, string, bool, string>("ReceiveCommandFeedback", (machineName, commandName, isSuccess, message) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -377,7 +268,7 @@ namespace DeskPilot.Admin.ViewModels
                 });
             });
 
-            // Lắng nghe bản ghi ActionLog mới theo thời gian thực (khi thực thi lệnh hoặc đóng ticket)
+            // 6. Nhận ActionLog mới
             _hubConnection.On<ActionLogDto>("ReceiveNewActionLog", (newLog) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -386,6 +277,71 @@ namespace DeskPilot.Admin.ViewModels
                     if (ActionLogs.Count > 50)
                     {
                         ActionLogs.RemoveAt(ActionLogs.Count - 1);
+                    }
+                });
+            });
+
+            // 7. Nhận tin nhắn chat
+            _hubConnection.On<ChatMessageDto>("ReceiveChatMessage", (chatMsg) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    bool isCurrentActive = SelectedConversation != null &&
+                        SelectedConversation.MachineName.Equals(chatMsg.MachineName, StringComparison.OrdinalIgnoreCase);
+
+                    if (isCurrentActive)
+                    {
+                        CurrentChatMessages.Add(chatMsg);
+                    }
+
+                    var displayMsg = !string.IsNullOrWhiteSpace(chatMsg.Message)
+                        ? chatMsg.Message
+                        : (!string.IsNullOrEmpty(chatMsg.ImageUrl) ? "[Hình ảnh]" : string.Empty);
+
+                    var existingConv = ChatConversations.FirstOrDefault(c =>
+                        c.MachineName.Equals(chatMsg.MachineName, StringComparison.OrdinalIgnoreCase));
+
+                    if (existingConv != null)
+                    {
+                        existingConv.LastMessage = displayMsg;
+                        existingConv.LastMessageAt = chatMsg.SentAt;
+                        if (!chatMsg.IsFromAdmin) existingConv.UserName = chatMsg.SenderName;
+
+                        if (!chatMsg.IsFromAdmin && !isCurrentActive)
+                        {
+                            existingConv.UnreadCount++;
+                        }
+                        else if (isCurrentActive)
+                        {
+                            existingConv.UnreadCount = 0;
+                        }
+
+                        ChatConversations.Remove(existingConv);
+                        ChatConversations.Insert(0, existingConv);
+                    }
+                    else
+                    {
+                        var isOnline = FindMachine(chatMsg.MachineName)?.IsOnline ?? false;
+                        var newConv = new ChatConversationDto
+                        {
+                            MachineName = chatMsg.MachineName,
+                            UserName = !chatMsg.IsFromAdmin ? chatMsg.SenderName : "",
+                            LastMessage = displayMsg,
+                            LastMessageAt = chatMsg.SentAt,
+                            IsOnline = isOnline,
+                            UnreadCount = (!chatMsg.IsFromAdmin && !isCurrentActive) ? 1 : 0
+                        };
+                        ChatConversations.Insert(0, newConv);
+                    }
+
+                    if (!chatMsg.IsFromAdmin)
+                    {
+                        System.Media.SystemSounds.Asterisk.Play();
+                        AddIncident(chatMsg.MachineName, chatMsg.SenderName, $"Chat: {displayMsg}", "Tin nhắn", "#3b82f6", "#eff6ff", "#2563eb");
+                        new ToastContentBuilder()
+                            .AddText($"[CHAT] Từ {chatMsg.MachineName} ({chatMsg.SenderName})")
+                            .AddText(displayMsg)
+                            .Show();
                     }
                 });
             });
@@ -404,18 +360,15 @@ namespace DeskPilot.Admin.ViewModels
 
             _hubConnection.Closed += error =>
             {
-                // Chỉ xảy ra khi auto-reconnect đã bỏ cuộc => chuyển sang vòng lặp thử lại vô hạn
                 System.Diagnostics.Debug.WriteLine("[Admin SignalR] Kết nối đóng, đang chờ thử lại...");
                 _ = ConnectWithRetryAsync();
                 return Task.CompletedTask;
             };
 
-            // Bắt đầu vòng lặp thử kết nối chạy ngầm cho đến khi Server sẵn sàng
             _ = ConnectWithRetryAsync();
             await Task.CompletedTask;
         }
 
-        // Chỉ cho phép 1 vòng lặp kết nối chạy tại một thời điểm (tránh gọi StartAsync chồng nhau)
         private async Task ConnectWithRetryAsync()
         {
             if (Interlocked.Exchange(ref _retryLoopRunning, 1) == 1) return;
@@ -468,7 +421,6 @@ namespace DeskPilot.Admin.ViewModels
             {
                 if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
                 {
-                    // Danh sách máy (kể cả máy đang offline) để Dashboard không trống khi vừa mở
                     var machines = await _hubConnection.InvokeAsync<List<MachineStatusDto>>("GetMachines");
                     var oldTickets = await _hubConnection.InvokeAsync<List<TicketDto>>("GetActiveTickets");
 
@@ -490,127 +442,13 @@ namespace DeskPilot.Admin.ViewModels
                     });
 
                     await LoadActionLogsAsync();
+                    await LoadChatConversationsAsync();
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SignalR Error] Lỗi kết nối hoặc tải dữ liệu: {ex.Message}");
             }
-        }
-
-        // Phát lệnh từ xa xuống máy chỉ định
-        public async Task SendCommandAsync(string targetMachine, string commandName)
-        {
-            if (_hubConnection is not null && _hubConnection.State == HubConnectionState.Connected)
-            {
-                try
-                {
-                    // ActionLog mới sẽ được Server đẩy về qua sự kiện "ReceiveNewActionLog"
-                    await _hubConnection.InvokeAsync("SendCommandToClient", targetMachine, commandName);
-                    AddIncident(targetMachine, "", $"Đã gửi lệnh: {commandName}", "Đang chạy", "#3b82f6", "#eff6ff", "#2563eb");
-                }
-                catch (Exception ex)
-                {
-                    _ = DeskPilot.Admin.Services.ModalDialogService.ShowWarningAsync(
-                        "Không Thể Gửi Lệnh",
-                        CleanHubError(ex));
-                }
-            }
-            else
-            {
-                _ = DeskPilot.Admin.Services.ModalDialogService.ShowWarningAsync(
-                    "Thông Báo Kết Nối",
-                    "Chưa kết nối được với Server! Đang tự động kết nối lại...");
-                _ = ConnectWithRetryAsync();
-            }
-        }
-
-        // HubException từ Server có dạng "An unexpected error occurred invoking '...' on the server. HubException: <message>"
-        private static string CleanHubError(Exception ex)
-        {
-            const string marker = "HubException: ";
-            var idx = ex.Message.IndexOf(marker, StringComparison.Ordinal);
-            return idx >= 0 ? ex.Message[(idx + marker.Length)..] : ex.Message;
-        }
-
-        // IT bấm hoàn tất Ticket
-        public async Task ResolveTicketAsync(int ticketId)
-        {
-            if (_hubConnection is not null && _hubConnection.State == HubConnectionState.Connected)
-            {
-                try
-                {
-                    await _hubConnection.InvokeAsync("ResolveTicket", ticketId);
-                }
-                catch (Exception ex)
-                {
-                    _ = DeskPilot.Admin.Services.ModalDialogService.ShowErrorAsync(
-                        "Lỗi Đóng Phiếu",
-                        $"Không thể cập nhật trạng thái phiếu: {CleanHubError(ex)}");
-                }
-            }
-        }
-
-        // Tải lịch sử 20 lệnh can thiệp gần nhất từ PostgreSQL
-        public async Task LoadActionLogsAsync()
-        {
-            if (_hubConnection is not null && _hubConnection.State == HubConnectionState.Connected)
-            {
-                try
-                {
-                    var logs = await _hubConnection.InvokeAsync<List<ActionLogDto>>("GetRecentActionLogs");
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        ActionLogs.Clear();
-                        foreach (var log in logs)
-                        {
-                            ActionLogs.Add(log);
-                        }
-                    });
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Lỗi tải ActionLogs: {ex.Message}");
-                }
-            }
-        }
-
-        // Kiểm tra ngưỡng nguy hiểm và bắn Toast cảnh báo
-        private void CheckAndAlertResourceThreshold(MachineStatusDto status)
-        {
-            bool isHighRam = status.RamUsagePercent >= 85;
-            bool isLowDisk = status.FreeDiskSpaceGB <= 5;
-
-            if (!isHighRam && !isLowDisk) return;
-
-            if (_lastAlertTimes.TryGetValue(status.MachineName, out var lastTime)
-                && (DateTime.Now - lastTime).TotalMinutes < 2)
-            {
-                return;
-            }
-
-            _lastAlertTimes[status.MachineName] = DateTime.Now;
-
-            string alertTitle = $"[CẢNH BÁO TÀI NGUYÊN] Máy: {status.MachineName}";
-            string alertContent;
-
-            if (isHighRam && isLowDisk)
-            {
-                alertContent = $"RAM quá tải ({status.RamUsagePercent:F1}%) VÀ Ổ C sắp đầy (còn {status.FreeDiskSpaceGB:F1} GB)!";
-            }
-            else if (isHighRam)
-            {
-                alertContent = $"RAM đang chạm ngưỡng nguy hiểm: {status.RamUsagePercent:F1}%!";
-            }
-            else
-            {
-                alertContent = $"Dung lượng ổ C sắp cạn: còn {status.FreeDiskSpaceGB:F1} GB!";
-            }
-
-            new ToastContentBuilder()
-                .AddText(alertTitle)
-                .AddText(alertContent)
-                .Show();
         }
     }
 }

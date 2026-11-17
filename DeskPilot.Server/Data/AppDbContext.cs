@@ -17,6 +17,18 @@ namespace DeskPilot.Server.Data
         // Bảng lưu lịch sử thực thi lệnh (Audit Log)
         public DbSet<ActionLog> ActionLogs => Set<ActionLog>();
 
+        // Bảng quản lý danh mục thiết bị CNTT (IT Assets)
+        public DbSet<Device> Devices => Set<Device>();
+
+        // Bảng quản lý danh mục công cụ / script kỹ thuật (IT Tools)
+        public DbSet<Tool> Tools => Set<Tool>();
+
+        // Bảng lập kế hoạch và lịch bảo trì định kỳ thiết bị CNTT
+        public DbSet<MaintenanceSchedule> MaintenanceSchedules => Set<MaintenanceSchedule>();
+
+        // Bảng lưu lịch sử tin nhắn chat giữa IT và máy trạm
+        public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

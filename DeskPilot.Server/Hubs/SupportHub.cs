@@ -25,6 +25,7 @@ namespace DeskPilot.Server.Hubs
 
         private readonly ITicketService _ticketService;
         private readonly IActionLogService _actionLogService;
+        private readonly IChatService _chatService;
         private readonly MachineStateCache _machineCache;
         private readonly ApiKeyValidator _apiKeyValidator;
         private readonly ILogger<SupportHub> _logger;
@@ -32,12 +33,14 @@ namespace DeskPilot.Server.Hubs
         public SupportHub(
             ITicketService ticketService,
             IActionLogService actionLogService,
+            IChatService chatService,
             MachineStateCache machineCache,
             ApiKeyValidator apiKeyValidator,
             ILogger<SupportHub> logger)
         {
             _ticketService = ticketService;
             _actionLogService = actionLogService;
+            _chatService = chatService;
             _machineCache = machineCache;
             _apiKeyValidator = apiKeyValidator;
             _logger = logger;
@@ -118,6 +121,42 @@ namespace DeskPilot.Server.Hubs
             await Clients.Group(AdminsGroup).SendAsync("ReceiveCommandFeedback", authenticatedMachine, commandName, isSuccess, message);
         }
 
+        // 3.1 Nhân viên gửi tin nhắn Chat tới IT Admin (hỗ trợ kèm ảnh ImageKit)
+        public async Task<ChatMessageDto> SendChatMessage(string senderName, string message, string? imageUrl = null)
+        {
+            var machineName = RequireAgent();
+            message = (message ?? string.Empty).Trim();
+            imageUrl = string.IsNullOrWhiteSpace(imageUrl) ? null : imageUrl.Trim();
+
+            if (string.IsNullOrEmpty(message) && string.IsNullOrEmpty(imageUrl))
+            {
+                throw new HubException("Nội dung tin nhắn hoặc hình ảnh không được để trống.");
+            }
+
+            if (string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(imageUrl))
+            {
+                message = "[Hình ảnh]";
+            }
+
+            if (message.Length > MaxDescriptionLength) message = message[..MaxDescriptionLength];
+
+            senderName = string.IsNullOrWhiteSpace(senderName) ? "Nhân viên" : senderName.Trim();
+
+            var chatDto = await _chatService.SaveMessageAsync(machineName, senderName, message, isFromAdmin: false, imageUrl);
+
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveChatMessage", chatDto);
+            await Clients.Group(MachineGroup(machineName)).SendAsync("ReceiveChatMessage", chatDto);
+
+            return chatDto;
+        }
+
+        // 3.2 Máy trạm lấy lại lịch sử chat của chính máy mình
+        public async Task<List<ChatMessageDto>> GetMyChatHistory(int count = 50)
+        {
+            var machineName = RequireAgent();
+            return await _chatService.GetHistoryAsync(machineName, count);
+        }
+
         // ===================== ADMIN =====================
 
         // 4. Admin phát lệnh xuống đúng máy Client và ghi nhật ký lệnh
@@ -171,6 +210,54 @@ namespace DeskPilot.Server.Hubs
         {
             RequireAdmin();
             return await _actionLogService.GetRecentAsync(20);
+        }
+
+        // 9. IT Admin trả lời tin nhắn tới một máy cụ thể (hỗ trợ kèm ảnh ImageKit)
+        public async Task<ChatMessageDto> ReplyChatMessage(string targetMachineName, string message, string? imageUrl = null)
+        {
+            var operatorName = RequireAdmin();
+            if (string.IsNullOrWhiteSpace(targetMachineName)) throw new HubException("Chưa chọn máy trạm để trả lời.");
+
+            message = (message ?? string.Empty).Trim();
+            imageUrl = string.IsNullOrWhiteSpace(imageUrl) ? null : imageUrl.Trim();
+
+            if (string.IsNullOrEmpty(message) && string.IsNullOrEmpty(imageUrl))
+            {
+                throw new HubException("Nội dung tin nhắn hoặc hình ảnh không được để trống.");
+            }
+
+            if (string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(imageUrl))
+            {
+                message = "[Hình ảnh]";
+            }
+
+            if (message.Length > MaxDescriptionLength) message = message[..MaxDescriptionLength];
+
+            var chatDto = await _chatService.SaveMessageAsync(targetMachineName, operatorName, message, isFromAdmin: true, imageUrl);
+
+            await Clients.Group(MachineGroup(targetMachineName)).SendAsync("ReceiveChatMessage", chatDto);
+            await Clients.Group(AdminsGroup).SendAsync("ReceiveChatMessage", chatDto);
+
+            return chatDto;
+        }
+
+        // 10. Admin lấy lịch sử chat của một máy trạm
+        public async Task<List<ChatMessageDto>> GetChatHistory(string machineName, int count = 50)
+        {
+            RequireAdmin();
+            return await _chatService.GetHistoryAsync(machineName, count);
+        }
+
+        // 11. Admin lấy danh sách các cuộc hội thoại
+        public async Task<List<ChatConversationDto>> GetChatConversations()
+        {
+            RequireAdmin();
+            var convs = await _chatService.GetConversationsAsync();
+            foreach (var c in convs)
+            {
+                c.IsOnline = _machineCache.IsOnline(c.MachineName);
+            }
+            return convs;
         }
 
         // ===================== Helpers =====================

@@ -170,13 +170,13 @@
 
                 <!-- 1.2 Menu Điều Hướng Chính -->
                 <StackPanel Grid.Row="1" Margin="0,0,0,20">
-                    <!-- Tab 0: Trợ lý AI (Mặc định khi vào lần đầu) -->
+                    <!-- Tab 0: Trò chuyện (Mặc định khi vào lần đầu) -->
                     <Button Click="NavChat_Click" Margin="0,0,0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource SidebarMenuButtonStyle}">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsChatActive}" Value="True">
-                                        <Setter Property="Background" Value="#7c3aed"/>
+                                        <Setter Property="Background" Value="#2563eb"/>
                                         <Setter Property="Foreground" Value="#ffffff"/>
                                         <Setter Property="FontWeight" Value="SemiBold"/>
                                     </DataTrigger>
@@ -197,13 +197,13 @@
                                         </Style>
                                     </Path.Style>
                                     <Path.Data>
-                                        M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.38 5.08L2 22l5.08-1.38C8.58 21.5 10.15 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm-1 14h-2v-2h2v2zm0-4h-2V7h2v5z
+                                        M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z
                                     </Path.Data>
                                 </Path>
-                                <TextBlock Text="Trợ lý AI" VerticalAlignment="Center"/>
+                                <TextBlock Text="Trò chuyện" VerticalAlignment="Center"/>
                             </StackPanel>
-                            <Border Background="#a855f7" CornerRadius="8" Padding="6,1" HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center">
-                                <TextBlock Text="NEW" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                            <Border Background="#3b82f6" CornerRadius="8" Padding="6,1" HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center">
+                                <TextBlock Text="CHAT" Foreground="White" FontSize="9" FontWeight="Bold"/>
                             </Border>
                         </DockPanel>
                     </Button>
@@ -250,7 +250,7 @@
                     </Button>
 
                     <!-- Tab 3: Quản lý Runbook/Script -->
-                    <Button Click="NavLogs_Click">
+                    <Button Click="NavLogs_Click" Margin="0,0,0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource SidebarMenuButtonStyle}">
                                 <Style.Triggers>
@@ -264,7 +264,64 @@
                         </Button.Style>
                         <StackPanel Orientation="Horizontal">
                             <ui:SymbolIcon Symbol="Play24" FontSize="16" Margin="0,0,10,0"/>
-                            <TextBlock Text="Quản lý Runbook/Script" VerticalAlignment="Center"/>
+                            <TextBlock Text="Nhật ký thao tác" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tab 4: Quản lý Thiết bị -->
+                    <Button Click="NavDevices_Click" Margin="0,0,0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SidebarMenuButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDevicesActive}" Value="True">
+                                        <Setter Property="Background" Value="#2563eb"/>
+                                        <Setter Property="Foreground" Value="#ffffff"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Desktop24" FontSize="16" Margin="0,0,10,0"/>
+                            <TextBlock Text="Quản lý Thiết bị" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tab 5: Quản lý Công cụ -->
+                    <Button Click="NavTools_Click" Margin="0,0,0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SidebarMenuButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsToolsActive}" Value="True">
+                                        <Setter Property="Background" Value="#2563eb"/>
+                                        <Setter Property="Foreground" Value="#ffffff"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Wrench24" FontSize="16" Margin="0,0,10,0"/>
+                            <TextBlock Text="Quản lý Công cụ" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tab 6: Kế hoạch Bảo trì -->
+                    <Button Click="NavMaintenance_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SidebarMenuButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMaintenanceActive}" Value="True">
+                                        <Setter Property="Background" Value="#2563eb"/>
+                                        <Setter Property="Foreground" Value="#ffffff"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="CalendarLtr24" FontSize="16" Margin="0,0,10,0"/>
+                            <TextBlock Text="Lịch Bảo Trì" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
